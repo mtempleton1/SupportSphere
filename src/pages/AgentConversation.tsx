@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { AgentHeader } from '../components/AgentHeader'
 import {
@@ -17,6 +17,7 @@ interface Account {
 }
 
 type RoleCategory = 'agent' | 'admin' | 'owner' | 'end_user'
+type TicketStatus = 'new' | 'open' | 'pending' | 'on_hold' | 'solved' | 'closed'
 
 interface Role {
   roleCategory: RoleCategory
@@ -25,12 +26,50 @@ interface Role {
 interface UserProfile {
   userType: string
   roleId: string
+  name: string
   Roles: Role[]
+}
+
+interface Brand {
+  brandId: string
+  name: string
+}
+
+interface Ticket {
+  ticketId: string
+  subject: string
+  status: TicketStatus
+  brandId: string
+  requesterId: string
+  assigneeId: string | null
+  assigneeGroupId: string | null
+  createdAt: string
+  updatedAt: string
+  Brands: Brand
+  Requesters: UserProfile
+  Assignees?: UserProfile
+  ticketNumber: number
+  Groups?: {
+    groupId: string
+    name: string
+  }
+}
+
+interface Comment {
+  commentId: string
+  content: string
+  isPublic: boolean
+  createdAt: string
+  authorId: string
+  author: UserProfile
 }
 
 export function AgentConversation() {
   const navigate = useNavigate()
+  const { ticketId } = useParams()
   const [account, setAccount] = useState<Account | null>(null)
+  const [ticket, setTicket] = useState<Ticket | null>(null)
+  const [comments, setComments] = useState<Comment[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -78,8 +117,56 @@ export function AgentConversation() {
           navigate('/')
           return
         }
+
+        // Fetch ticket data
+        const { data: ticketData, error: ticketError } = await supabase
+          .from('Tickets')
+          .select(`
+            *,
+            Brands (
+              brandId,
+              name
+            ),
+            Requesters:UserProfiles!Tickets_requesterId_fkey (
+              userId,
+              name,
+              userType
+            ),
+            Assignees:UserProfiles!Tickets_assigneeId_fkey (
+              userId,
+              name,
+              userType
+            ),
+            Groups (
+              groupId,
+              name
+            )
+          `)
+          .eq('ticketId', ticketId)
+          .single()
+
+        if (ticketError) throw ticketError
+        setTicket(ticketData)
+
+        // Fetch comments
+        const { data: commentsData, error: commentsError } = await supabase
+          .from('TicketComments')
+          .select(`
+            *,
+            author:UserProfiles!TicketComments_authorId_fkey (
+              userId,
+              name,
+              userType
+            )
+          `)
+          .eq('ticketId', ticketId)
+          .order('createdAt', { ascending: true })
+
+        if (commentsError) throw commentsError
+        setComments(commentsData)
+
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch account')
+        setError(err instanceof Error ? err.message : 'Failed to fetch data')
         navigate('/')
       } finally {
         setLoading(false)
@@ -87,11 +174,11 @@ export function AgentConversation() {
     }
 
     checkAuthAndAccount()
-  }, [navigate])
+  }, [navigate, ticketId])
 
   if (loading) return <div>Loading...</div>
   if (error) return <div>Error: {error}</div>
-  if (!account) return <div>Account not found</div>
+  if (!account || !ticket) return <div>Data not found</div>
 
   return (
     <div className="flex flex-col w-full h-screen bg-gray-50 min-w-0">
@@ -100,14 +187,16 @@ export function AgentConversation() {
         <div className="w-64 flex-shrink-0 border-r bg-white overflow-y-auto">
           <div className="p-4 border-b">
             <div className="flex items-center justify-between mb-4">
-              <span className="font-medium">Organization (create)</span>
+              <span className="font-medium">
+                {ticket.Requesters?.name || 'Unknown Requester'}
+              </span>
             </div>
             <div className="flex items-center space-x-2 mb-4">
-              <span>Venkat Kumar</span>
+              <span>{ticket.subject}</span>
               <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-sm">
-                Open
+                {ticket.status}
               </span>
-              <span className="text-gray-500">Ticket #246</span>
+              <span className="text-gray-500">Ticket #{ticket.ticketNumber}</span>
             </div>
           </div>
           <div className="p-4">
@@ -117,7 +206,7 @@ export function AgentConversation() {
                   Brand
                 </label>
                 <select className="w-full p-2 border rounded">
-                  <option>Obscura</option>
+                  <option>{ticket.Brands?.name || 'No Brand'}</option>
                 </select>
               </div>
               <div>
@@ -125,7 +214,7 @@ export function AgentConversation() {
                   Requester
                 </label>
                 <select className="w-full p-2 border rounded">
-                  <option>Venkat Kumar</option>
+                  <option>{ticket.Requesters?.name || 'Unknown Requester'}</option>
                 </select>
               </div>
               <div>
@@ -133,7 +222,11 @@ export function AgentConversation() {
                   Assignee
                 </label>
                 <select className="w-full p-2 border rounded">
-                  <option>Support/Lisa Kelly</option>
+                  <option>
+                    {ticket.Groups?.name && ticket.Assignees?.name 
+                      ? `${ticket.Groups.name}/${ticket.Assignees.name}`
+                      : ticket.Assignees?.name || 'Unassigned'}
+                  </option>
                 </select>
               </div>
             </div>
@@ -142,7 +235,7 @@ export function AgentConversation() {
         <div className="flex-1 flex flex-col bg-white min-w-0">
           <div className="p-4 border-b">
             <h1 className="text-xl font-medium mb-1">
-              Conversation with Venkat Kumar
+              Conversation with {ticket.Requesters?.name || 'Unknown Requester'}
             </h1>
             <div className="text-sm text-red-500">Via messaging</div>
           </div>
@@ -151,15 +244,15 @@ export function AgentConversation() {
               <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0" />
               <div>
                 <div className="flex items-center space-x-2 mb-1">
-                  <span className="font-medium">Venkat Kumar</span>
-                  <span className="text-sm text-gray-500">8 minutes ago</span>
+                  <span className="font-medium">
+                    {ticket.Requesters?.name || 'Unknown Requester'}
+                  </span>
+                  <span className="text-sm text-gray-500">
+                    {new Date(ticket.createdAt).toLocaleTimeString()}
+                  </span>
                 </div>
                 <div className="bg-blue-50 rounded-lg p-3">
-                  <p>
-                    Hi there,
-                    <br />
-                    Can I get some help with my account, please?
-                  </p>
+                  <p>{ticket.subject}</p>
                 </div>
               </div>
             </div>
@@ -167,18 +260,41 @@ export function AgentConversation() {
               <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0" />
               <div>
                 <div className="flex items-center space-x-2 mb-1">
-                  <span className="font-medium">Lisa Kelly</span>
-                  <span className="text-sm text-gray-500">5 minutes ago</span>
+                  <span className="font-medium">
+                    {ticket.Assignees?.name || 'Unassigned'}
+                  </span>
+                  <span className="text-sm text-gray-500">
+                    {new Date(ticket.updatedAt).toLocaleTimeString()}
+                  </span>
                 </div>
                 <div className="bg-gray-100 rounded-lg p-3">
-                  <p>
-                    Hi Venkat,
-                    <br />
-                    How can I help you? Is it about your recent camera return?
-                  </p>
+                  <p>{ticket.subject}</p>
                 </div>
               </div>
             </div>
+
+            {/* Comments */}
+            {comments.map((comment) => (
+              <div key={comment.commentId} className="flex space-x-3">
+                <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0" />
+                <div>
+                  <div className="flex items-center space-x-2 mb-1">
+                    <span className="font-medium">{comment.author?.name}</span>
+                    <span className="text-sm text-gray-500">
+                      {new Date(comment.createdAt).toLocaleString()}
+                    </span>
+                    {!comment.isPublic && (
+                      <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
+                        Internal Note
+                      </span>
+                    )}
+                  </div>
+                  <div className={`rounded-lg p-3 ${comment.isPublic ? 'bg-blue-50' : 'bg-gray-100'}`}>
+                    <p>{comment.content}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
           <div className="border-t p-4">
             <div className="border rounded-lg">
@@ -213,7 +329,9 @@ export function AgentConversation() {
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center space-x-3">
                 <div className="w-10 h-10 bg-gray-200 rounded-full" />
-                <span className="font-medium">Venkat Kumar</span>
+                <span className="font-medium">
+                  {ticket.Requesters?.name || 'Unknown Requester'}
+                </span>
               </div>
               <button className="p-1 hover:bg-gray-100 rounded">
                 <Maximize2 size={16} />
@@ -224,7 +342,7 @@ export function AgentConversation() {
                 <label className="block text-sm text-gray-600 mb-1">
                   Email
                 </label>
-                <div className="text-blue-600">wplus@earth</div>
+                <div className="text-blue-600">{ticket.Requesters?.name}@example.com</div>
               </div>
               <div>
                 <label className="block text-sm text-gray-600 mb-1">
@@ -236,7 +354,9 @@ export function AgentConversation() {
                 <label className="block text-sm text-gray-600 mb-1">
                   Local time
                 </label>
-                <div>Thu, 16:24 MST</div>
+                <div>
+                  {new Date(ticket.createdAt).toLocaleString()}
+                </div>
               </div>
               <div>
                 <label className="block text-sm text-gray-600 mb-1">
