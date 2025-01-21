@@ -74,13 +74,13 @@ export function AgentHeader({ variant = 'conversation' }: AgentHeaderProps) {
   );
 
   return (
-    <header className={`flex items-center justify-between px-4 py-2 bg-white border-b ${variant === 'dashboard' ? 'h-14' : ''}`}>
+    <header className={`flex items-center justify-between px-4 py-2 border-b ${variant === 'dashboard' ? 'h-14' : ''}`}>
       {variant === 'dashboard' ? renderDashboardLeft() : renderConversationLeft()}
       <div className="flex items-center space-x-4">
-        <button className="p-1 hover:bg-gray-100 rounded">
+        <button className="p-1 hover:bg-gray-200 rounded">
           <Search size={20} />
         </button>
-        <button className="p-1 hover:bg-gray-100 rounded">
+        <button className="p-1 hover:bg-gray-200 rounded">
           <HelpCircle size={20} />
         </button>
         <div className="relative" ref={dropdownRef}>
