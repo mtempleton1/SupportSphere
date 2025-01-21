@@ -35,6 +35,11 @@ interface Brand {
   name: string
 }
 
+interface Channel {
+  type: string
+  name: string
+}
+
 interface Ticket {
   ticketId: string
   subject: string
@@ -53,6 +58,7 @@ interface Ticket {
     groupId: string
     name: string
   }
+  Channels?: Channel
 }
 
 interface Comment {
@@ -139,6 +145,10 @@ export function AgentConversation() {
             ),
             Groups (
               groupId,
+              name
+            ),
+            Channels (
+              type,
               name
             )
           `)
@@ -233,11 +243,11 @@ export function AgentConversation() {
           </div>
         </div>
         <div className="flex-1 flex flex-col bg-white min-w-0">
-          <div className="p-4 border-b">
-            <h1 className="text-xl font-medium mb-1">
+          <div className="px-6 py-4 border-b">
+            <h1 className="text-xl font-medium mb-1 text-left">
               Conversation with {ticket.Requesters?.name || 'Unknown Requester'}
             </h1>
-            <div className="text-sm text-red-500">Via messaging</div>
+            <div className="text-sm text-red-500 text-left">Via {ticket.Channels?.name?.replace(/\s*Channel\s*/i, '') || ticket.Channels?.type?.replace(/_/g, ' ') || 'unknown channel'}</div>
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-6">
             <div className="flex space-x-3">
