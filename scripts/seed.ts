@@ -52,6 +52,121 @@ type PlansJson = {
   [planName: string]: PlanData
 }
 
+// Add channel type definition from the database schema
+type ChannelType = 'email' | 'help_center' | 'web_messaging' | 'mobile_messaging' | 'whatsapp' | 
+  'line' | 'facebook' | 'facebook_messenger' | 'twitter' | 'twitter_dm' | 'instagram_direct' | 
+  'wechat' | 'voice' | 'text' | 'live_chat' | 'web_widget' | 'mobile_sdk' | 'api' | 'cti' | 
+  'closed_ticket';
+
+// Add function to generate channel configuration based on type
+function generateChannelConfig(type: ChannelType): any {
+  switch (type) {
+    case 'email':
+      return {
+        forwardingAddress: faker.internet.email(),
+        customDomain: faker.internet.domainName(),
+        emailTemplate: 'default'
+      };
+    case 'web_messaging':
+      return {
+        widgetColor: faker.internet.color(),
+        welcomeMessage: faker.company.catchPhrase(),
+        offlineMessage: 'We\'re currently offline. Please leave a message.'
+      };
+    case 'whatsapp':
+      return {
+        phoneNumber: faker.phone.number(),
+        businessName: faker.company.name(),
+        welcomeMessage: faker.company.catchPhrase()
+      };
+    case 'voice':
+      return {
+        phoneNumber: faker.phone.number(),
+        voicemailGreeting: 'Please leave a message after the tone.',
+        businessHours: {
+          monday: { start: '9:00', end: '17:00' },
+          tuesday: { start: '9:00', end: '17:00' },
+          wednesday: { start: '9:00', end: '17:00' },
+          thursday: { start: '9:00', end: '17:00' },
+          friday: { start: '9:00', end: '17:00' }
+        }
+      };
+    case 'live_chat':
+      return {
+        widgetColor: faker.internet.color(),
+        onlineMessage: 'We\'re here to help!',
+        offlineMessage: 'Leave us a message',
+        operatingHours: {
+          timezone: 'UTC',
+          schedule: {
+            monday: { start: '9:00', end: '17:00' },
+            tuesday: { start: '9:00', end: '17:00' },
+            wednesday: { start: '9:00', end: '17:00' },
+            thursday: { start: '9:00', end: '17:00' },
+            friday: { start: '9:00', end: '17:00' }
+          }
+        }
+      };
+    default:
+      return {};
+  }
+}
+
+// Add function to create channels for an account
+async function createChannelsForAccount(accountId: string, brandId: string): Promise<Database['public']['Tables']['Channels']['Row'][]> {
+  // Define common channels that most accounts would have
+  const commonChannelTypes: ChannelType[] = [
+    'email',
+    'help_center',
+    'web_messaging',
+    'web_widget',
+    'live_chat'
+  ];
+
+  // Define additional channels that some accounts might have
+  const additionalChannelTypes: ChannelType[] = [
+    'whatsapp',
+    'facebook_messenger',
+    'twitter',
+    'voice',
+    'text',
+    'mobile_sdk',
+    'api'
+  ];
+
+  // Always create common channels
+  const channelsToCreate = [...commonChannelTypes];
+
+  // Randomly add 2-4 additional channels
+  const numAdditionalChannels = faker.number.int({ min: 2, max: 4 });
+  const selectedAdditionalChannels = faker.helpers.arrayElements(additionalChannelTypes, numAdditionalChannels);
+  channelsToCreate.push(...selectedAdditionalChannels);
+
+  // Create channel records
+  const channelData = channelsToCreate.map(type => ({
+    accountId,
+    brandId,
+    type,
+    name: type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) + ' Channel',
+    description: faker.company.catchPhrase(),
+    isEnabled: faker.datatype.boolean(0.9), // 90% chance of being enabled
+    configuration: generateChannelConfig(type),
+    createdAt: faker.date.past({ years: 1 }).toISOString(),
+    updatedAt: faker.date.recent().toISOString()
+  }));
+
+  const { data: channels, error } = await supabase
+    .from('Channels')
+    .insert(channelData)
+    .select();
+
+  if (error) throw error;
+  if (!channels) throw new Error('No channels were created');
+
+  console.log(`Created ${channels.length} channels for account`);
+  return channels;
+}
+
 // Company seed data
 const companies = [
   {
@@ -461,6 +576,10 @@ async function seedCompanyData() {
       if (brandsError) throw brandsError
       console.log(`Created brands for ${account.name}`)
 
+      // Create channels for the default brand
+      const channels = await createChannelsForAccount(account.accountId, createdBrands[0].brandId);
+      console.log(`Created channels for ${account.name}`);
+
       // Now create user profiles for successfully created auth users
       const users: Database['public']['Tables']['UserProfiles']['Insert'][] = [
         // Owner (if we have at least one user)
@@ -645,7 +764,7 @@ async function seedCompanyData() {
           status: faker.helpers.arrayElement(['new', 'open', 'pending', 'on_hold', 'solved', 'closed']),
           type: ticketType,
           priority: faker.helpers.arrayElement(['low', 'normal', 'high', 'urgent']),
-          channelId: null, // Would need to create channels first
+          channelId: faker.helpers.arrayElement(channels).channelId,
           isPublic: faker.datatype.boolean(0.8), // 80% chance of being public
           createdAt: faker.date.past({ years: 1 }).toISOString(),
           // If this is an incident ticket, link it to a random problem ticket

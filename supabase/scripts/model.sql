@@ -762,7 +762,9 @@ CREATE TABLE "Tickets" (
     CONSTRAINT valid_problem_ticket CHECK (
         ("type" = 'incident' AND "problemTicketId" IS NOT NULL) OR
         ("type" != 'incident' AND "problemTicketId" IS NULL)
-    )
+    ),
+    "ticketNumber" BIGINT NOT NULL,
+    CONSTRAINT "unique_ticket_number_per_account" UNIQUE ("accountId", "ticketNumber")
 );
 
 -- Create CustomFields Table to define custom ticket fields
@@ -2406,3 +2408,66 @@ USING (
         )
     )
 );
+
+-- Create TicketSequences table to track last number per account
+CREATE TABLE "TicketSequences" (
+    "accountId" UUID PRIMARY KEY REFERENCES "Accounts"("accountId") ON DELETE CASCADE,
+    "lastNumber" BIGINT NOT NULL DEFAULT 0
+);
+
+-- Enable RLS for TicketSequences
+ALTER TABLE "TicketSequences" ENABLE ROW LEVEL SECURITY;
+
+-- Create policy for TicketSequences - only system can modify
+CREATE POLICY "Only system can access ticket sequences"
+ON "TicketSequences" USING (false);
+
+-- Create function to get next ticket number
+CREATE OR REPLACE FUNCTION get_next_ticket_number(account_id UUID)
+RETURNS BIGINT AS $$
+DECLARE
+    next_number BIGINT;
+BEGIN
+    -- Insert or update the sequence record
+    INSERT INTO "TicketSequences" ("accountId", "lastNumber")
+    VALUES (account_id, 1)
+    ON CONFLICT ("accountId") DO UPDATE
+    SET "lastNumber" = "TicketSequences"."lastNumber" + 1
+    RETURNING "lastNumber" INTO next_number;
+    
+    RETURN next_number;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Create trigger function to set ticket number
+CREATE OR REPLACE FUNCTION set_ticket_number()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Set the ticket number using the sequence
+    NEW."ticketNumber" := get_next_ticket_number(NEW."accountId");
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Create trigger to automatically set ticket number on insert
+CREATE TRIGGER set_ticket_number_on_insert
+    BEFORE INSERT ON "Tickets"
+    FOR EACH ROW
+    EXECUTE FUNCTION set_ticket_number();
+
+-- Prevent updates to ticketNumber
+CREATE OR REPLACE FUNCTION prevent_ticket_number_update()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF OLD."ticketNumber" != NEW."ticketNumber" THEN
+        RAISE EXCEPTION 'Ticket number cannot be modified';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create trigger to prevent ticket number updates
+CREATE TRIGGER prevent_ticket_number_update
+    BEFORE UPDATE ON "Tickets"
+    FOR EACH ROW
+    EXECUTE FUNCTION prevent_ticket_number_update();
