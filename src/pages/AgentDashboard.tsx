@@ -7,7 +7,9 @@ import {
   HelpCircle,
   MessageCircle,
 } from "lucide-react";
-export function App() {
+import { AgentHeader } from "../components/AgentHeader";
+
+export function AgentDashboard() {
   const tickets = [
     {
       id: 491,
@@ -80,19 +82,7 @@ export function App() {
         </nav>
       </div>
       <div className="flex-1 flex flex-col">
-        <header className="h-14 bg-white border-b flex items-center justify-between px-4">
-          <div className="flex items-center">
-            <h1 className="text-lg font-medium mr-8">Dashboard</h1>
-            <button className="text-sm text-gray-600 mr-4">
-              Explore Zendesk Support
-            </button>
-          </div>
-          <div className="flex items-center space-x-4">
-            <Search size={20} className="text-gray-400" />
-            <HelpCircle size={20} className="text-gray-400" />
-            <div className="w-8 h-8 bg-gray-200 rounded-full" />
-          </div>
-        </header>
+        <AgentHeader variant="dashboard" />
         <div className="flex-1 p-6">
           <div className="mb-6">
             <h2 className="text-lg font-medium mb-4">

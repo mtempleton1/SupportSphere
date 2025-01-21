@@ -11,8 +11,13 @@ import {
   ChevronDown,
   LogOut,
 } from "lucide-react";
+import { useLocation } from "react-router-dom";
 
-export function AgentHeader() {
+interface AgentHeaderProps {
+  variant?: 'dashboard' | 'conversation';
+}
+
+export function AgentHeader({ variant = 'conversation' }: AgentHeaderProps) {
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -36,28 +41,41 @@ export function AgentHeader() {
     window.location.href = '/';
   };
 
-  return (
-    <header className="flex items-center justify-between px-4 py-2 bg-white border-b">
-      <div className="flex items-center space-x-4">
-        <div className="flex items-center space-x-2">
-          <button className="p-1 hover:bg-gray-100 rounded">
-            <Grid size={20} />
-          </button>
-          <div className="flex items-center space-x-1 px-3 py-1 bg-gray-100 rounded text-sm">
-            <MessageCircle size={16} />
-            <span>Conversations</span>
-            <span className="bg-gray-200 px-1.5 rounded">0</span>
-          </div>
-        </div>
-        <div className="flex items-center space-x-2">
-          <button className="p-1 hover:bg-gray-100 rounded">
-            <Phone size={20} />
-          </button>
-          <button className="p-1 hover:bg-gray-100 rounded">
-            <Bell size={20} />
-          </button>
+  const renderDashboardLeft = () => (
+    <div className="flex items-center">
+      <h1 className="text-lg font-medium mr-8">Dashboard</h1>
+      <button className="text-sm text-gray-600 mr-4">
+        Explore Zendesk Support
+      </button>
+    </div>
+  );
+
+  const renderConversationLeft = () => (
+    <div className="flex items-center space-x-4">
+      <div className="flex items-center space-x-2">
+        <button className="p-1 hover:bg-gray-100 rounded">
+          <Grid size={20} />
+        </button>
+        <div className="flex items-center space-x-1 px-3 py-1 bg-gray-100 rounded text-sm">
+          <MessageCircle size={16} />
+          <span>Conversations</span>
+          <span className="bg-gray-200 px-1.5 rounded">0</span>
         </div>
       </div>
+      <div className="flex items-center space-x-2">
+        <button className="p-1 hover:bg-gray-100 rounded">
+          <Phone size={20} />
+        </button>
+        <button className="p-1 hover:bg-gray-100 rounded">
+          <Bell size={20} />
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <header className={`flex items-center justify-between px-4 py-2 bg-white border-b ${variant === 'dashboard' ? 'h-14' : ''}`}>
+      {variant === 'dashboard' ? renderDashboardLeft() : renderConversationLeft()}
       <div className="flex items-center space-x-4">
         <button className="p-1 hover:bg-gray-100 rounded">
           <Search size={20} />
