@@ -60,7 +60,8 @@ const companies = [
     industry: 'Technology',
     description: 'Enterprise software solutions provider',
     size: 'Large',
-    useCase: 'Customer support for SaaS products'
+    useCase: 'Customer support for SaaS products',
+    planName: 'Suite Professional' // Large company, high-end plan
   },
   {
     name: 'GreenLeaf Organics',
@@ -68,7 +69,8 @@ const companies = [
     industry: 'Food & Agriculture',
     description: 'Organic food distribution company',
     size: 'Medium',
-    useCase: 'Order management and supplier support'
+    useCase: 'Order management and supplier support',
+    planName: 'Suite Growth' // Medium company, mid-tier plan
   },
   {
     name: 'SwiftCare Medical',
@@ -76,7 +78,8 @@ const companies = [
     industry: 'Healthcare',
     description: 'Telemedicine platform provider',
     size: 'Large',
-    useCase: 'Patient support and appointment management'
+    useCase: 'Patient support and appointment management',
+    planName: 'Suite Professional' // Large healthcare company, high-end plan
   },
   {
     name: 'EduTech Innovators',
@@ -84,7 +87,8 @@ const companies = [
     industry: 'Education',
     description: 'Online learning platform',
     size: 'Small',
-    useCase: 'Student and teacher support'
+    useCase: 'Student and teacher support',
+    planName: 'Support Team' // Small company, basic support plan
   },
   {
     name: 'FinServe Global',
@@ -92,7 +96,8 @@ const companies = [
     industry: 'Financial Services',
     description: 'Digital banking solutions',
     size: 'Large',
-    useCase: 'Customer service for banking products'
+    useCase: 'Customer service for banking products',
+    planName: 'Support Professional' // Large company, professional support plan
   }
 ]
 
@@ -126,17 +131,32 @@ async function seedCompanyData() {
   try {
     console.log('Starting company data seeding...')
     
+    // Get all available plans first
+    const { data: plans, error: plansError } = await supabase
+      .from('Plans')
+      .select()
+    
+    if (plansError || !plans) {
+      throw new Error(`Failed to fetch plans: ${plansError?.message || 'No plans found'}`)
+    }
+
     // Create accounts and their associated data
     for (const company of companies) {
       console.log(`Creating account for ${company.name}...`)
       
-      // 1. Create Account
+      // Find the corresponding plan
+      const plan = plans.find(p => p.name === company.planName)
+      if (!plan) {
+        throw new Error(`Plan not found for ${company.name}: ${company.planName}`)
+      }
+      
+      // 1. Create Account (now with planId)
       const { data: account, error: accountError } = await supabase
         .from('Accounts')
         .insert({
           name: company.name,
           subdomain: company.subdomain,
-          planId: null // Will be updated later
+          planId: plan.planId // Set the planId
         })
         .select()
         .single()
@@ -549,6 +569,20 @@ async function seedCompanyData() {
 
       if (usersError) throw usersError
       console.log(`Created users for ${account.name}`)
+
+      // Update account with owner
+      const owner = createdUsers.find(u => u.roleId === createdRoles.find(r => r.roleCategory === 'owner')?.roleId)
+      if (!owner) {
+        throw new Error(`No owner found for account ${account.name}`)
+      }
+
+      const { error: updateError } = await supabase
+        .from('Accounts')
+        .update({ ownerId: owner.userId })
+        .eq('accountId', account.accountId)
+
+      if (updateError) throw updateError
+      console.log(`Updated account ${account.name} with owner ID`)
 
       // 6. Assign Users to Groups
       const staffUsers = createdUsers.filter(u => u.userType === 'staff')
