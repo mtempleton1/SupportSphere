@@ -7,6 +7,9 @@ CREATE TYPE "role_type" AS ENUM ('system', 'custom', 'light', 'contributor');
 -- Create Role Category Enum
 CREATE TYPE "role_category" AS ENUM ('end_user', 'agent', 'admin', 'owner');
 
+-- Create End User Account Creation Type Enum
+CREATE TYPE "end_user_account_creation_type" AS ENUM ('submit_ticket', 'sign_up');
+
 -- Create Plans Table first (no dependencies)
 CREATE TABLE "Plans" (
     "planId" UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -35,6 +38,7 @@ CREATE TABLE "Accounts" (
     "subdomain" VARCHAR(255) UNIQUE NOT NULL,
     "favicon" VARCHAR(255),
     "planId" UUID REFERENCES "Plans"("planId") ON DELETE CASCADE,
+    "endUserAccountCreationType" end_user_account_creation_type NOT NULL DEFAULT 'submit_ticket',
     "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -231,8 +235,20 @@ USING (
     )
 );
 
--- Accounts policies
-CREATE POLICY "Users can view their own account"
+-- Drop existing Accounts policies if they exist
+DROP POLICY IF EXISTS "Users can view their own account" ON "Accounts";
+
+-- Create new public read policy for Accounts
+CREATE POLICY "Public can view basic account info"
+ON "Accounts" FOR SELECT
+TO authenticated, anon
+USING (
+    -- Allow access to all fields except planId
+    true
+);
+
+-- Create policy to protect planId
+CREATE POLICY "Only account members can view sensitive info"
 ON "Accounts" FOR SELECT
 TO authenticated
 USING (
@@ -242,6 +258,14 @@ USING (
         WHERE "userId" = auth.uid()
     )
 );
+
+-- Modify the Accounts table to implement column-level security
+ALTER TABLE "Accounts" ENABLE ROW LEVEL SECURITY;
+
+-- Revoke and grant column-level permissions
+REVOKE SELECT ON "Accounts" FROM anon, authenticated;
+GRANT SELECT ("accountId", "name", "subdomain", "endUserAccountCreationType", "favicon") ON "Accounts" TO anon, authenticated;
+GRANT SELECT ("planId") ON "Accounts" TO authenticated;
 
 -- UserProfiles policies
 CREATE POLICY "Users can view profiles in their account"

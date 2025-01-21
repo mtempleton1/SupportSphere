@@ -16,6 +16,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.48.0",
     "cross-fetch": "^4.1.0",
+    "lucide-react": "^0.473.0",
     "node-fetch": "^3.3.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -39,6 +40,9 @@
     "supabase": "^2.6.8",
     "typescript": "~5.6.2",
     "typescript-eslint": "^8.18.2",
-    "vite": "^6.0.5"
+    "vite": "^6.0.5",
+    "tailwindcss": "latest",
+    "autoprefixer": "latest",
+    "postcss": "latest"
   }
 }

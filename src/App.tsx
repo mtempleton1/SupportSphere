@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { LoginPage } from './pages/Login'
+import { AccountHome } from './pages/AccountHome'
+import { TicketCreate } from './pages/TicketCreate'
 import './App.css'
 
 function App() {
@@ -7,7 +9,8 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/" element={<LoginPage />} />
+        <Route path="/tickets/new" element={<TicketCreate />} />
+        <Route path="/" element={<AccountHome />} />
       </Routes>
     </BrowserRouter>
   )
