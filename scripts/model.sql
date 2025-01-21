@@ -268,14 +268,20 @@ GRANT SELECT ("accountId", "name", "subdomain", "endUserAccountCreationType", "f
 GRANT SELECT ("planId") ON "Accounts" TO authenticated;
 
 -- UserProfiles policies
-CREATE POLICY "Users can view profiles in their account"
+CREATE POLICY "Users can view their own profile"
+ON "UserProfiles" FOR SELECT
+TO authenticated
+USING ("userId" = auth.uid());
+
+CREATE POLICY "Staff can view profiles in their account"
 ON "UserProfiles" FOR SELECT
 TO authenticated
 USING (
-    "accountId" = (
-        SELECT "accountId" 
-        FROM "UserProfiles" 
-        WHERE "userId" = auth.uid()
+    EXISTS (
+        SELECT 1 
+        FROM "Roles" r
+        WHERE r."roleId" = "UserProfiles"."roleId"
+        AND r."accountId" = "UserProfiles"."accountId"
     )
 );
 

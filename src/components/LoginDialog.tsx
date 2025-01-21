@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { X, ArrowRight } from "lucide-react";
+import { supabase } from "../lib/supabase";
 
 export const LoginDialog = ({
   isOpen,
@@ -12,29 +14,180 @@ export const LoginDialog = ({
   type: "staff" | "user";
   accountType: 'submit_ticket' | 'sign_up';
 }) => {
+  const navigate = useNavigate();
   const [mode, setMode] = useState<'login' | 'signup' | 'reset'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Reset mode when dialog closes or type changes
+  // Reset mode and form when dialog closes or type changes
   useEffect(() => {
     if (!isOpen || type === 'staff') {
       setMode('login');
+      setEmail('');
+      setPassword('');
+      setFullName('');
+      setError(null);
     }
   }, [isOpen, type]);
 
   if (!isOpen) return null;
 
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    try {
+      const { data: { session }, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (authError) throw authError;
+      if (!session) throw new Error('No session after login');
+
+      // Get the account ID from the hostname
+      const hostname = window.location.hostname;
+      const subdomain = hostname.split('.')[0];
+      const { data: account, error: accountError } = await supabase
+        .from('Accounts')
+        .select('accountId')
+        .eq('subdomain', subdomain)
+        .single();
+
+      if (accountError) throw accountError;
+
+      // Get user profile and role
+      const { data: userProfile, error: profileError } = await supabase
+        .from('UserProfiles')
+        .select('userType, roleId, Roles!inner(roleCategory)')
+        .eq('userId', session.user.id)
+        .eq('accountId', account.accountId)
+        .single();
+
+      if (profileError) throw profileError;
+
+      // Handle navigation based on user type and role
+      if (type === 'staff') {
+        if (userProfile.userType !== 'staff') {
+          throw new Error('Invalid staff credentials');
+        }
+
+        if (userProfile.Roles.roleCategory === 'admin' || userProfile.Roles.roleCategory === 'owner') {
+          navigate('/admin');
+        } else if (userProfile.Roles.roleCategory === 'agent') {
+          navigate('/agent');
+        } else {
+          throw new Error('Invalid staff role');
+        }
+      } else {
+        if (userProfile.userType !== 'end_user' || userProfile.Roles.roleCategory !== 'end_user') {
+          throw new Error('Invalid user credentials');
+        }
+        navigate('/user');
+      }
+
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    try {
+      const { data: { session }, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: fullName,
+          }
+        }
+      });
+
+      if (signUpError) throw signUpError;
+      if (!session) {
+        setMode('login');
+        setError('Please check your email to verify your account, then sign in.');
+        return;
+      }
+
+      // Get the account ID from the hostname
+      const hostname = window.location.hostname;
+      const subdomain = hostname.split('.')[0];
+      const { data: account, error: accountError } = await supabase
+        .from('Accounts')
+        .select('accountId')
+        .eq('subdomain', subdomain)
+        .single();
+
+      if (accountError) throw accountError;
+
+      // Create user profile
+      const { error: profileError } = await supabase
+        .from('UserProfiles')
+        .insert([
+          {
+            userId: session.user.id,
+            name: fullName,
+            userType: 'end_user',
+            accountId: account.accountId,
+            isEmailVerified: false,
+          }
+        ]);
+
+      if (profileError) throw profileError;
+
+      navigate('/user');
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email);
+      if (resetError) throw resetError;
+      setMode('login');
+      setError('Please check your email for password reset instructions.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const renderForm = () => {
     if (mode === 'signup' && type === 'user') {
       return (
-        <form className="space-y-4">
+        <form onSubmit={handleSignup} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Full Name
             </label>
             <input
               type="text"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               placeholder="Enter your full name"
+              required
             />
           </div>
           <div>
@@ -43,8 +196,11 @@ export const LoginDialog = ({
             </label>
             <input
               type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               placeholder="Enter your email"
+              required
             />
           </div>
           <div>
@@ -53,15 +209,20 @@ export const LoginDialog = ({
             </label>
             <input
               type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               placeholder="Create a password"
+              required
             />
           </div>
+          {error && <div className="text-red-600 text-sm">{error}</div>}
           <button
             type="submit"
-            className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            disabled={loading}
+            className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
           >
-            Create Support Account
+            {loading ? 'Creating Account...' : 'Create Support Account'}
           </button>
           <button
             type="button"
@@ -76,22 +237,27 @@ export const LoginDialog = ({
 
     if (mode === 'reset' && type === 'user') {
       return (
-        <form className="space-y-4">
+        <form onSubmit={handlePasswordReset} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Email
             </label>
             <input
               type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               placeholder="Enter your email"
+              required
             />
           </div>
+          {error && <div className="text-red-600 text-sm">{error}</div>}
           <button
             type="submit"
-            className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            disabled={loading}
+            className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
           >
-            Reset Password
+            {loading ? 'Sending...' : 'Reset Password'}
           </button>
           <button
             type="button"
@@ -105,15 +271,18 @@ export const LoginDialog = ({
     }
 
     return (
-      <form className="space-y-4">
+      <form onSubmit={handleLogin} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Email
           </label>
           <input
             type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
             placeholder="Enter your email"
+            required
           />
         </div>
         <div>
@@ -122,15 +291,20 @@ export const LoginDialog = ({
           </label>
           <input
             type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
             placeholder="Enter your password"
+            required
           />
         </div>
+        {error && <div className="text-red-600 text-sm">{error}</div>}
         <button
           type="submit"
-          className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          disabled={loading}
+          className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
         >
-          {type === "staff" ? "Login as Staff" : "Sign in"}
+          {loading ? 'Signing in...' : type === "staff" ? "Login as Staff" : "Sign in"}
         </button>
         {type === 'user' && (
           <div className="space-y-2">
