@@ -3,8 +3,7 @@ import { LoginPage } from './pages/Login'
 import { AccountHome } from './pages/AccountHome'
 import { TicketCreate } from './pages/TicketCreate'
 import { EndUserPage } from './pages/EndUserPage'
-import { AgentDashboard } from './pages/AgentDashboard'
-import { AgentConversation } from './pages/AgentConversation'
+import { AgentWorkspace } from './pages/AgentWorkspace'
 import { AdminPage } from './pages/AdminPage'
 import './App.css'
 
@@ -15,8 +14,7 @@ function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/tickets/new" element={<TicketCreate />} />
         <Route path="/user" element={<EndUserPage />} />
-        <Route path="/agent" element={<AgentDashboard />} />
-        <Route path="/agent/tickets/:ticketId" element={<AgentConversation />} />
+        <Route path="/agent/*" element={<AgentWorkspace />} />
         <Route path="/admin" element={<AdminPage />} />
         <Route path="/" element={<AccountHome />} />
       </Routes>
