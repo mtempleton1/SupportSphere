@@ -3,6 +3,14 @@ import { useNavigate } from "react-router-dom";
 import { X, ArrowRight } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
+interface UserProfile {
+  userType: 'staff' | 'end_user';
+  roleId: string;
+  Roles: {
+    roleCategory: 'end_user' | 'agent' | 'admin' | 'owner';
+  };
+}
+
 export const LoginDialog = ({
   isOpen,
   onClose,
@@ -41,15 +49,7 @@ export const LoginDialog = ({
     setLoading(true);
 
     try {
-      const { data: { session }, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (authError) throw authError;
-      if (!session) throw new Error('No session after login');
-
-      // Get the account ID from the hostname
+      // First, get the account ID from the hostname
       const hostname = window.location.hostname;
       const subdomain = hostname.split('.')[0];
       const { data: account, error: accountError } = await supabase
@@ -60,34 +60,50 @@ export const LoginDialog = ({
 
       if (accountError) throw accountError;
 
-      // Get user profile and role
-      const { data: userProfile, error: profileError } = await supabase
+      // Check if user exists and has correct type before authenticating
+      const { data: userProfiles, error: profileError } = await supabase
         .from('UserProfiles')
-        .select('userType, roleId, Roles!inner(roleCategory)')
-        .eq('userId', session.user.id)
+        .select(`
+          userType,
+          roleId,
+          Roles (roleCategory)
+        `)
         .eq('accountId', account.accountId)
+        .eq('userId', (await supabase.auth.signInWithPassword({
+          email,
+          password
+        })).data.user?.id)
         .single();
+      if (profileError || !userProfiles) {
+        await supabase.auth.signOut();
+        throw new Error('Invalid credentials');
+      }
+      // Type assertion since we know the shape of the data
+      const userProfile = userProfiles as unknown as UserProfile;
 
-      if (profileError) throw profileError;
+      // Verify user type matches login form type
+      if (type === 'staff' && userProfile.userType !== 'staff') {
+        await supabase.auth.signOut();
+        throw new Error('Invalid staff credentials');
+      }
+      if (type === 'user' && userProfile.userType === 'end_user') {
+        navigate('/user');
+        return;
+      }
 
       // Handle navigation based on user type and role
       if (type === 'staff') {
-        if (userProfile.userType !== 'staff') {
-          throw new Error('Invalid staff credentials');
-        }
-
-        if (userProfile.Roles.roleCategory === 'admin' || userProfile.Roles.roleCategory === 'owner') {
+        const roleCategory = userProfile.Roles?.roleCategory;
+        if (roleCategory === 'admin' || roleCategory === 'owner') {
           navigate('/admin');
-        } else if (userProfile.Roles.roleCategory === 'agent') {
+        } else if (roleCategory === 'agent') {
           navigate('/agent');
         } else {
+          await supabase.auth.signOut();
           throw new Error('Invalid staff role');
         }
       } else {
-        if (userProfile.userType !== 'end_user' || userProfile.Roles.roleCategory !== 'end_user') {
-          throw new Error('Invalid user credentials');
-        }
-        navigate('/user');
+        throw new Error('Invalid user credentials');
       }
 
       onClose();
