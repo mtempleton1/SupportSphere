@@ -1,0 +1,754 @@
+{
+  "Email with unlimited addresses": {
+    "description": "Out-of-the-box email integration (no need to set up your mail server) with unlimited email addresses. Customizable HTML and text templates.",
+    "more_info": null
+  },
+  "Contact form": {
+    "description": "Add a contact form to your website that allows customers to get in touch at any time.",
+    "more_info": null
+  },
+  "Ticket file attachment size": {
+    "description": "Attach files up to 50MB.",
+    "more_info": null
+  },
+  "Incoming email authentication: SPF, DKIM, DMARC": {
+    "description": "\\u003ca href=\\\"https://support.zendesk.com/hc/en-us/articles/115014034108-Authenticating-incoming-email-SPF-DKIM-DMARC-\\\"\\u003eAuthenticate incoming email\\u003c/a\\u003e to reduce spoofed email and spam with SPF, DKIM, or DMARC authentication methods.",
+    "more_info": "https://support.zendesk.com/hc/en-us/articles/115014034108-Authenticating-incoming-email-SPF-DKIM-DMARC-"
+  },
+  "Automatic email archiving": {
+    "description": "Send all Zendesk email notifications privately to an address of your choice to keep a complete \\u003ca href=\\\"https://support.zendesk.com/hc/en-us/articles/203663156-Archiving-ticket-email-notifications-Enterprise-\\\"\\u003earchive\\u003c/a\\u003e of communication.",
+    "more_info": "https://support.zendesk.com/hc/en-us/articles/203663156-Archiving-ticket-email-notifications-Enterprise-"
+  },
+  "Web widget": {
+    "description": "Embed support on your website. Allow customers to get the help they need by taking actions like submitting a ticket, or starting a conversation with an agent.",
+    "more_info": null
+  },
+  "Mobile SDKs: iOS SDK, Android SDK, and Unity SDK": {
+    "description": "Bring support natively into your iOS and Android apps. Visit \\u003ca href=\\\"https://developer.zendesk.com/\\\"\\u003edeveloper.zendesk.com\\u003c/a\\u003e for more details.",
+    "more_info": "https://developer.zendesk.com/"
+  },
+  "Widget customization": {
+    "description": "Customize the widget to match the look and feel of your brand.",
+    "more_info": null
+  },
+  "Pre-chat form": {
+    "description": "Ask visitors to answers a series of questions before starting a conversation with an agent.",
+    "more_info": null
+  },
+  "Unlimited concurrent chats": {
+    "description": "Agents can have unlimited simultaneous chats at a time.",
+    "more_info": null
+  },
+  "Shortcuts": {
+    "description": "Convert keywords into complete sentences using preset commands.",
+    "more_info": null
+  },
+  "Automatic translation": {
+    "description": "Conversations are automatically translated within the dashboard (powered by Google Translate).",
+    "more_info": null
+  },
+  "Send and receive files": {
+    "description": "Transfer files between you and your visitors.",
+    "more_info": null
+  },
+  "Conversation rating": {
+    "description": "Allow visitors to rate their experience.",
+    "more_info": null
+  },
+  "Transfers between agents \\u0026 departments": {
+    "description": "The agent serving a session can transfer it to another agent or department.",
+    "more_info": null
+  },
+  "Departments": {
+    "description": "Group your agents into different departments.",
+    "more_info": null
+  },
+  "Rich message types": {
+    "description": "Send rich message types (image, file, emoji, GIF, form, carousel).",
+    "more_info": null
+  },
+  "Conversation history": {
+    "description": "Allow visitors to view previous conversation history without having to authenticate themselves.",
+    "more_info": null
+  },
+  "Re-engagement": {
+    "description": "Use email to re-engage with visitors who have started chatting with you.",
+    "more_info": null
+  },
+  "Whisper mode": {
+    "description": "Allow multiple agents to collaborate silently on internal notes, to help the assigned agent during live conversation.",
+    "more_info": null
+  },
+  "Warm transfer": {
+    "description": "Add more context with internal notes before transferring the conversation to another agent.",
+    "more_info": null
+  },
+  "Send proactive messages": {
+    "description": "Send customers proactive messages using metadata such as region, IP address, pages, and more.",
+    "more_info": null
+  },
+  "Skills-based routing": {
+    "description": "Skills-based routing automatically sends tickets to specific team members based on their expertise for faster ticket resolution.",
+    "more_info": null
+  },
+  "Widget unbranding": {
+    "description": "Remove the \\\"Zendesk\\\" branding from your widget. Only available on live chat. \\u003ca href=\\\"https://support.zendesk.com/hc/en-us/articles/4408834108186-Messaging-vs-live-chat-Which-is-right-for-you-\\\"\\u003e",
+    "more_info": "https://support.zendesk.com/hc/en-us/articles/4408834108186-Messaging-vs-live-chat-Which-is-right-for-you-"
+  },
+  "Social channels": {
+    "description": "Engage customers over popular social channels like Facebook, Instagram, and X as well as messaging apps like WhatsApp, WeChat, LINE and more. With Zendesk Suite, you can add up to five X handles. \\u003ca href=\\\"https://support.zendesk.com/hc/en-us/articles/4408818454938-WhatsApp-pricing-change-announcement\\\"\\u003eAdditional fees apply\\u003c/a\\u003e.",
+    "more_info": "https://support.zendesk.com/hc/en-us/articles/4408818454938-WhatsApp-pricing-change-announcement"
+  },
+  "Voicemail": {
+    "description": "Voicemails automatically create tickets for easy tracking and follow-up. Turn on optional voicemail transcription to see at a glance why a customer has called.",
+    "more_info": null
+  },
+  "Text messages": {
+    "description": "Respond to inbound text messages, automate alerts, or send proactive text messages. Inbound texts automatically create tickets for easy issue resolution. \\u003ca href=\\\"https://support.zendesk.com/hc/en-us/articles/115007405487-Zendesk-Talk-number-availability-and-address-requirements/\\\"\\u003eAdditional fees apply\\u003c/a\\u003e.",
+    "more_info": "https://support.zendesk.com/hc/en-us/articles/115007405487-Zendesk-Talk-number-availability-and-address-requirements/"
+  },
+  "Embedded voice": {
+    "description": "Embed a call button to give your customers a seamless, immediate way to get in touch while browsing your website and mobile app.",
+    "more_info": null
+  },
+  "Display a number using web widget": {
+    "description": "Display your phone number and wait time to customers browsing your website.",
+    "more_info": null
+  },
+  "Partner Edition (Computer Telephony Integration) *": {
+    "description": "Integrate your preferred call center software with Zendesk. Access to out-of-the-box integrations with 90+ telephony providers and CTI toolkit. \\u003cbr /\\u003e* Specific features vary by partner.",
+    "more_info": null
+  },
+  "Answer in browser \\u0026 forward to phone": {
+    "description": "Receive or place calls in the Zendesk browser, without any additional phone hardware or equipment. Forward calls to an external number to give agents flexibility to take them from mobile phones or landlines.",
+    "more_info": null
+  },
+  "Outbound Caller ID": {
+    "description": "Surface customer details automatically for incoming calls and select a phone number to be displayed for outgoing calls. Customers on Zendesk Suite Professional plans and above can add an external number to appear for your outbound caller ID instead of a Zendesk number.",
+    "more_info": null
+  },
+  "Call routing": {
+    "description": "Route calls directly to a specific group of agents or a set of groups in Zendesk, or route calls received after business hours or when agents are busy to an alternate phone number\u2014ensuring customers can always connect with a live agent.",
+    "more_info": null
+  },
+  "Failover": {
+    "description": "Automatically forward incoming calls to an alternate number in the unlikely event of a Zendesk outage. On Demand failover is available on the Suite Enterprise plan and allows customers to trigger the failover for testing or other temporary uses.",
+    "more_info": null
+  },
+  "Customized greetings": {
+    "description": "Offer branded or localized experiences with multiple greetings for different brands, departments, and phone numbers.",
+    "more_info": null
+  },
+  "Queue size and wait time": {
+    "description": "Set a maximum queue size and wait time to determine how many incoming callers will be kept waiting for an available agent. New calls that exceed your queue size or wait time are automatically directed to voicemail. Extended queue wait time increases max queue wait times up to 60 minutes to accommodate large call volumes.",
+    "more_info": null
+  },
+  "Automatic ticket creation": {
+    "description": "Zendesk automatically turns calls, voicemails, and texts into tickets for easy record keeping and issue resolution.",
+    "more_info": null
+  },
+  "Call recording": {
+    "description": "Record calls for easy reference, troubleshooting, and QA.",
+    "more_info": null
+  },
+  "Mute, hold \\u0026 warm transfer": {
+    "description": "Mute, unmute and hold as needed from the call console. Brief new agents on an issue before handing off a call so they can easily pick up the conversation where it left off.",
+    "more_info": null
+  },
+  "Business hours": {
+    "description": "Define business hours in Zendesk to let customers know your support availability.",
+    "more_info": null
+  },
+  "Conference calling": {
+    "description": "Allow agents to consult with a third-party and choose to either transfer or add them to the ongoing call.",
+    "more_info": null
+  },
+  "Call blocking": {
+    "description": "Compile a blocklist of phone numbers so bots, spammers, or other unwanted callers are automatically disconnected when they call.",
+    "more_info": null
+  },
+  "Interactive voice response (IVR, phone trees)": {
+    "description": "Route customers to the right agent or department and provide recorded responses for frequently asked questions with multi-level interactive voice response (IVR) systems.",
+    "more_info": null
+  },
+  "Priority numbers": {
+    "description": "Assign specific priority phone numbers. Any incoming calls to priority numbers are moved to the front of the queue.",
+    "more_info": null
+  },
+  "Request a callback": {
+    "description": "Allow customers to request a callback from the queue or the web widget instead of waiting for a live agent.",
+    "more_info": null
+  },
+  "Call wrap-up time limits": {
+    "description": "Limit the amount of time agents have to wrap up calls before accepting new ones.",
+    "more_info": null
+  },
+  "Call recording controls": {
+    "description": "Allow agents to pause and resume the recording of an active call to protect customer privacy. You can also give callers the choice to opt-in or opt-out of call recordings.",
+    "more_info": null
+  },
+  "Call monitoring \\u0026 barging": {
+    "description": "Give managers the ability to listen or jump in during ongoing calls between customers and agents for quality and training purposes.",
+    "more_info": null
+  },
+  "Call quality notifications": {
+    "description": "Monitor network and audio issues in real-time to ensure high quality conversations.",
+    "more_info": null
+  },
+  "Call offering time limit": {
+    "description": "Choose the amount of time each agent gets to answer a call before it is placed back in the queue.",
+    "more_info": null
+  },
+  "Call usage 99.95% uptime SLA": {
+    "description": "Receive usage credit to your account in the event of outages from our service provider.",
+    "more_info": null
+  },
+  "Local and toll-free numbers": {
+    "description": "Choose a toll free or local number from 75+ countries, or port an existing number.",
+    "more_info": null
+  },
+  "Inbound and outbound minutes": {
+    "description": "Per-minute price for inbound and outbound calls as \\u003ca href=\\\"https://support.zendesk.com/hc/en-us/articles/115007405487-Zendesk-Talk-number-availability-and-address-requirements/\\\"\\u003eoutlined here\\u003c/a\\u003e.",
+    "more_info": "https://support.zendesk.com/hc/en-us/articles/115007405487-Zendesk-Talk-number-availability-and-address-requirements/"
+  },
+  "Contextual self-service": {
+    "description": "Embed your help center and suggest relevant articles with the web widget and mobile SDK.",
+    "more_info": null
+  },
+  "Multilingual content": {
+    "description": "Localize your help center in 40+ languages to serve customers in their native language.",
+    "more_info": null
+  },
+  "Article view permissions": {
+    "description": "Limit content within your help center to specific audiences, such as agents only, custom segments, or open to the public.",
+    "more_info": null
+  },
+  "Structured content": {
+    "description": "Organize your articles in multiple levels\u2014including unlimited categories and sections\u2014so it\u2019s easy for your customers to find what they need.",
+    "more_info": null
+  },
+  "Theme customization": {
+    "description": "Use themes to control the look and feel of your help centers across multiple brands or products. \\u003ca href=\\\"https://support.zendesk.com/hc/en-us/articles/4408821255834\\\"\\u003e",
+    "more_info": "https://support.zendesk.com/hc/en-us/articles/4408821255834"
+  },
+  "Multiple help centers": {
+    "description": "Support multiple brands, products, service tiers, or regions. Data and activity are centralized within a single account, making it easy to manage.",
+    "more_info": null
+  },
+  "Search": {
+    "description": "Empower customers with the information they need by extending help center search across the resources they need.",
+    "more_info": null
+  },
+  "Customer portal": {
+    "description": "Create a dedicated space for your customers to manage their support requests and community contributions with a personalized portal.",
+    "more_info": null
+  },
+  "Rich text WYSIWYG editor": {
+    "description": "Create articles with our WYSIWYG editor and include media such as images and video.",
+    "more_info": null
+  },
+  "SEO ready": {
+    "description": "Knowledge is optimized so search engines can understand your content and customers can find answers no matter where they look for them. You can also create a site map to provide information about how your site content is organized, which helps Google and other search engines to more intelligently crawl your site.",
+    "more_info": null
+  },
+  "Bulk actions": {
+    "description": "Update various article properties, such as labels and permissions, for multiple articles all at once.",
+    "more_info": null
+  },
+  "Flag \\u0026 create knowledge": {
+    "description": "Agents can create and share new articles using predefined templates.",
+    "more_info": null
+  },
+  "Content \\u0026 revision history": {
+    "description": "See a list of edits and changes, and restore deleted articles, so you can always be up to date with the latest versions.",
+    "more_info": null
+  },
+  "Article lists \\u0026 labels": {
+    "description": "Manage knowledge with customized article lists, search, filters, and article labels.",
+    "more_info": null
+  },
+  "Approval and publishing workflows": {
+    "description": "Designate content editing and publishing permissions across your team, and solicit team input by assigning article updates.",
+    "more_info": null
+  },
+  "Scheduled publishing and verification": {
+    "description": "Keep your content up to date through its lifecycle with scheduled publishing, unpublishing and verification intervals.",
+    "more_info": null
+  },
+  "Content blocks": {
+    "description": "Create, manage and update content that is reusable and can live across multiple articles or help centers.",
+    "more_info": null
+  },
+  "Answer Bot AI-powered bot solution: Flow Builder, Article Recommendations": {
+    "description": "Answer Bot provides immediate answers to incoming questions using machine learning to reply instantly with available, relevant information so customers can get answers without waiting. Answers can be delivered via email, ticket form, live chat, messaging, Slack, API and/or SDK.",
+    "more_info": null
+  },
+  "User profiles and aliases": {
+    "description": "Let community members view their community activity and stats in one place. Enable members to engage via a user alias.",
+    "more_info": null
+  },
+  "Integrated search": {
+    "description": "Easily search and filter across help center and community content.",
+    "more_info": null
+  },
+  "Similar posts": {
+    "description": "Surface similar posts to avoid duplicate threads and answer questions with existing content.",
+    "more_info": null
+  },
+  "Escalate posts to tickets": {
+    "description": "Empower community managers to escalate posts to support agents when one-on-one help is needed.",
+    "more_info": null
+  },
+  "Community moderators and moderator groups": {
+    "description": "Empower members to become moderators by assigning varying levels of permissions\u2014like the ability to flag, hide, edit, and move posts. You can vary moderation permissions by creating different moderator groups.",
+    "more_info": null
+  },
+  "Content moderation queue": {
+    "description": "Use keyword filters to immediately flag posts for review and approval prior to publishing.",
+    "more_info": null
+  },
+  "AI-powered spam protection": {
+    "description": "Automatically flag suspicious content for review and approval before publishing.",
+    "more_info": null
+  },
+  "User badges": {
+    "description": "Reward community members for achieving milestones or \\u003cbr /\\u003esharing valuable knowledge. Designate roles to encourage more credible and transparent community engagement.",
+    "more_info": null
+  },
+  "Unified agent workspace": {
+    "description": "A unified, conversation-focused agent workspace helps your team manage conversations and their status across all web, mobile and social channels in one single view.",
+    "more_info": null
+  },
+  "Translated interface": {
+    "description": "Agents can work in their preferred language, with a localized admin interface, across 28 languages including: German, French, Japanese, Portuguese, English, English (UK), Spanish, Italian, Dutch, Norwegian, Polish, Swedish, Turkish, Danish, Russian, Ukrainian, Simplified Chinese, Traditional Chinese, and Korean.",
+    "more_info": null
+  },
+  "Essentials card": {
+    "description": "The essentials card displays relevant details on the customer your agent is serving, such as contact information, language, and freeform notes.",
+    "more_info": null
+  },
+  "Interaction history": {
+    "description": "Interaction history surfaces a list of recent tickets submitted by the requester (or other related events). You can use this to better understand what the requester needed help with recently.",
+    "more_info": null
+  },
+  "Group contacts by organization": {
+    "description": "Add a user to one or many organizations to apply rules based on the group they belong to. Adding to multiple organizations is helpful for contractors, supervisors, or employees who may belong to multiple business units, departments, or locations.",
+    "more_info": null
+  },
+  "Custom user and organization fields": {
+    "description": "Capture customer information in user and organization fields. Set customer-centric workflows around these fields.",
+    "more_info": null
+  },
+  "Custom \\u0026 group views": {
+    "description": "Views are a collection of tickets based on ticket status, assignee, group, or any other ticket conditions. Zendesk comes with pre-configured views that we recommend as best practices. You can add more, modify, or turn them off.",
+    "more_info": null
+  },
+  "Dynamic content": {
+    "description": "Use dynamic content to create your own translations with a default version of the text (set in the same language as your default) and variants for every other language that you support. Based on the end-user\u2019s language, the appropriate variant is automatically displayed to the end-user.",
+    "more_info": null
+  },
+  "Customer satisfaction ratings (CSAT) \\u0026 follow-up survey": {
+    "description": "Capture feedback with customer satisfaction (CSAT) ratings surveys.",
+    "more_info": null
+  },
+  "Custom agent statuses": {
+    "description": "If your workflow requires more statuses than the default four (online, away, transfer only, and offline), you can create a limited amount of custom statuses available to all agents on your account.",
+    "more_info": null
+  },
+  "Dynamic, Contextual workspaces": {
+    "description": "Contextual workspaces enable admins to present ticket tools and features based on specific workflows. Combine with Layouts, you can dynamically customize the ticket interface.  For example, display the relevant ticket form and macros that pertain to that ticket, and pre-select apps to have expanded and collapsed. Create up to 20 active workspaces and include up to 10 conditions.",
+    "more_info": null
+  },
+  "Light agents": {
+    "description": "Give team members limited access to tickets without paying for more seats. They can read tickets and provide input by adding private comments.",
+    "more_info": null
+  },
+  "Side conversations": {
+    "description": "Loop in teammates to help resolve issues without leaving the ticket. They can respond via email or Slack and the whole conversation is linked to your ticket.",
+    "more_info": null
+  },
+  "Prebuilt apps \\u0026 integrations": {
+    "description": "Tap into 1,000+ prebuilt apps and integrations available from the Zendesk Marketplace to unite your favorite tools and important business data without writing a single line of code.",
+    "more_info": null
+  },
+  "Triggers": {
+    "description": "Triggers are business rules you define to run immediately after tickets are created or updated.",
+    "more_info": null
+  },
+  "Ticket sharing between multiple Zendesk accounts": {
+    "description": "Create workflows that share tickets between multiple Zendesk accounts.",
+    "more_info": null
+  },
+  "Conversation routing": {
+    "description": "Get conversations to the right agent based on their availability, capacity, and skill, as well as conversation priority, to ensure no conversation gets dropped and your teams deliver better, faster, and more conversational service every time.",
+    "more_info": null
+  },
+  "Multiple ticket forms": {
+    "description": "Reduce the back and forth with customized support forms. Collect specific information based on how your customers answer questions for the most relevant info at hand.",
+    "more_info": null
+  },
+  "Conditional ticket fields": {
+    "description": "Show only the fields that you want agents and end users to see in ticket forms for a better user experience.",
+    "more_info": null
+  },
+  "Service level agreements (SLA)": {
+    "description": "Ensure customer contracts and business goals are met through defined resolution times via service level agreements (SLA).",
+    "more_info": null
+  },
+  "Guided mode": {
+    "description": "Line up tickets for agents to work through and guide them from one ticket to the next. This prevents cherry-picking \\u0026 helps speed up response times and handle times.",
+    "more_info": null
+  },
+  "Pre-defined responses (macros)": {
+    "description": "Macros allow agents to quickly respond to common requests with a standard reply.",
+    "more_info": null
+  },
+  "Custom business rules (triggers \\u0026 automations)": {
+    "description": "Initiate, add, or modify workflows that are triggered by ticket changes or time-based conditions. Zendesk Suite comes with pre-configured business rules that we recommend as best practices. You can add more, modify, or turn them off.",
+    "more_info": null
+  },
+  "Article recommendations": {
+    "description": "Enable agents to solve tickets faster with AI-powered contextual article recommendations that can be linked within tickets with just one click.",
+    "more_info": null
+  },
+  "Business rules analysis": {
+    "description": "In-depth analysis of how a given ticket property is used across your triggers, automations, macros, and ticket views.",
+    "more_info": null
+  },
+  "AI-powered Content Cues": {
+    "description": "Content Cues helps you create relevant help center articles by automatically identifying common topics from customer requests.",
+    "more_info": null
+  },
+  "AI-powered triage and conversation insights - RETAIL ONLY": {
+    "description": "Automatically classify customer service conversations based on customer intent and language. Enable workflows that automatically triage and route incoming requests and surface AI-powered insights and relevant macros to solve requests faster. (Currently available for retail customers and will expand to other industries)",
+    "more_info": null
+  },
+  "Prebuilt analytics dashboards": {
+    "description": "Get data on what's going well and what needs improvement with pre-built reporting dashboards and customer satisfaction ratings.",
+    "more_info": null
+  },
+  "Data exports": {
+    "description": "Export insights in CSV, Excel, image, or PDF format.",
+    "more_info": null
+  },
+  "Zendesk Benchmark": {
+    "description": "Compare yourself against your peers on key benchmark metrics like customer satisfaction, first response time, and ticket volume.",
+    "more_info": null
+  },
+  "Voice usage reporting": {
+    "description": "See a breakdown of your usage charges including calls, voicemail transcriptions, recordings, text messages and phone numbers.",
+    "more_info": null
+  },
+  "Google Analytics for help center": {
+    "description": "In addition to Zendesk reporting, you also have the option of using Google Analytics to track your help center traffic.",
+    "more_info": null
+  },
+  "Custom data exploration": {
+    "description": "Create custom metrics, charts, filters, and dashboards using a point-and-click experience.",
+    "more_info": null
+  },
+  "Scheduled dashboard delivery": {
+    "description": "Schedule and automate the delivery of reporting dashboards.",
+    "more_info": null
+  },
+  "Dashboard sharing": {
+    "description": "Share relevant dashboards to keep teammates and stakeholders in the loop about key insights and trends.",
+    "more_info": null
+  },
+  "Live agent activity dashboard": {
+    "description": "Optimize your team\u2019s performance in real-time by viewing live agent activity, such as agent statuses across all channels, how many conversations each agent is working on, and more.",
+    "more_info": null
+  },
+  "Pre-built live dashboard": {
+    "description": "Monitor and act on trends in the moment with pre-built live charts and dashboards across your Zendesk channels.",
+    "more_info": null
+  },
+  "Customizable live dashboards": {
+    "description": "Create custom live dashboards for real-time insights.",
+    "more_info": null
+  },
+  "Visual data alerts": {
+    "description": "Set threshold alerts to visually understand when teams are under a heavy load.",
+    "more_info": null
+  },
+  "Refresh rate": {
+    "description": "The frequency of data refresh available in your Zendesk plan. Note: for plans with 1 hour refresh rates, completion of refresh may take up to two hours for extremely high data volumes.",
+    "more_info": null
+  },
+  "Data storage": {
+    "description": "Storage consumed by pre-configured and custom objects in Zendesk. Every Zendesk account includes 10GB of data storage in addition to a per-agent amount of storage based on plan type.",
+    "more_info": null
+  },
+  "File storage": {
+    "description": "Storage of files attached to Zendesk objects, like email attachments in a ticket. Every Zendesk account includes 10GB of file storage in addition to a per-agent amount of storage based on plan type.",
+    "more_info": null
+  },
+  "Custom objects": {
+    "description": "Store and connect new data sources, like products and order history, for greater context about your customer. \\u003ca href=\\\"https://support.zendesk.com/hc/en-us/articles/1500000252821\\\" target=\\\"_blank\\\"\\u003eLearn more\\u003c/a\\u003e.",
+    "more_info": "https://support.zendesk.com/hc/en-us/articles/1500000252821\\\" target=\\\"_blank"
+  },
+  "Zendesk events": {
+    "description": "Surface events from Zendesk (such as ticket events or help center articles viewed) within the Interactions History in the agent workspace or your custom app.",
+    "more_info": null
+  },
+  "External events": {
+    "description": "Capture every customer interaction\u2014like shopping cart, web or mobile activity\u2014 from 3rd-party applications to get a dynamic view of the customer journey.",
+    "more_info": null
+  },
+  "Event retention period": {
+    "description": "Period of time that Zendesk will store your external events.",
+    "more_info": null
+  },
+  "External profiles": {
+    "description": "Build customer profiles with attributes from 3rd-party applications to get a more complete picture of your customers.",
+    "more_info": null
+  },
+  "Devices data log": {
+    "description": "Embeddables (SDK \\u0026 Web Widget) automatically generate information about what device or version of the app was being used when a user asks for help.",
+    "more_info": null
+  },
+  "Additional data storage": {
+    "description": "If you reach your data storage limit or expect that you will, you may want to purchase more storage to increase your limit. For more information, see \\u003ca href=\\\"https://support.zendesk.com/hc/en-us/articles/360045836254\\\"\\u003edata storage limits\\u003c/a\\u003e.",
+    "more_info": "https://support.zendesk.com/hc/en-us/articles/360045836254"
+  },
+  "Private custom apps \\u0026 integrations": {
+    "description": "Build your own apps for exclusive use within your account, using our App or Channel Framework.",
+    "more_info": null
+  },
+  "API access": {
+    "description": "The API is a powerful resource that many Zendesk customers use to bulk-import resources, create apps, pull data from external sources, and more.",
+    "more_info": null
+  },
+  "Sunshine Conversations 3rd party chatbots": {
+    "description": "Integrate chatbots built by you or with a 3rd party into Zendesk.",
+    "more_info": null
+  },
+  "Additional API volume": {
+    "description": "Organizations requiring additional API volumes can increase overall \\u003ca href=\\\"https://developer.zendesk.com/rest_api/docs/support/usage_limits#zendesk-suite-plan-limits%20\\\"\\u003eAPI rate limit\\u003c/a\\u003e to 2500 requests per minute. \\u003cbr /\\u003eThis also includes the \\u003ca href=\\\"https://support.zendesk.com/hc/en-us/articles/4408824521114-Setting-up-the-Zendesk-Events-Connector-for-Amazon-EventBridge\\\"\\u003eEvents Connector\\u003c/a\\u003e for Amazon EventBridge to stream Zendesk events to AWS for building event-driven applications and performing analysis. You can send up to 700 events per minute.",
+    "more_info": "https://developer.zendesk.com/rest_api/docs/support/usage_limits#zendesk-suite-plan-limits%20"
+  },
+  "User authentication options: Native, SSO, and 2FA": {
+    "description": "Provide multiple \\u003ca href=\\\"/product/zendesk-security/#product-security\\\"\\u003euser authentication options\\u003c/a\\u003e for agents and admins to easily and securely sign in, including:\\u003cbr /\\u003e\u2022 Native Zendesk authentication\\u003cbr /\\u003e\u2022 Single sign-on (SSO) with social media credentials (Facebook, X, Google)\\u003cbr /\\u003e\u2022 Single sign-on (SSO) with business/active directory credentials using JSON Web Token (JWT) or Security Assertion Markup Language (SAML)\\u003cbr /\\u003e\u2022 Two-factor authentication, which requires a mobile passcode in addition to a password, for extra security.",
+    "more_info": "/product/zendesk-security/#product-security"
+  },
+  "Secure access options: IP restrictions, password complexity, session length": {
+    "description": "Customize how agents and admins \\u003ca href=\\\"/product/zendesk-security/#product-security\\\"\\u003eaccess Zendesk applications\\u003c/a\\u003e. \\u003cbr /\\u003eIP restrictions: only allow access from specific IP address ranges you define. \\u003cbr /\\u003ePassword complexity: customize how complex passwords need to be.\\u003cbr /\\u003eSession length: customize how long an agent can be idle before requiring them to log in again.",
+    "more_info": "/product/zendesk-security/#product-security"
+  },
+  "Agent device management": {
+    "description": "\\u003ca href=\\\"https://support.zendesk.com/hc/en-us/articles/203691096-Checking-devices-and-applications-that-accessed-your-account\\\"\\u003eTrack the devices used\\u003c/a\\u003e to access your Zendesk account. Admins will receive an email notification when a new device is added.",
+    "more_info": "https://support.zendesk.com/hc/en-us/articles/203691096-Checking-devices-and-applications-that-accessed-your-account"
+  },
+  "Data encryption at rest and in motion": {
+    "description": "\\u003ca href=\\\"/product/zendesk-security/#cloud-security\\\"\\u003eAutomatically keep your Zendesk data secure\\u003c/a\\u003e.\\u003cbr /\\u003eData encryption at rest: service data is encrypted at rest in AWS using AES-256 key encryption.\\u003cbr /\\u003eData encryption in motion:communications between you and Zendesk servers are encrypted via industry standard HTTPS/TLS",
+    "more_info": "/product/zendesk-security/#cloud-security"
+  },
+  "Host mapping": {
+    "description": "Change the URL of your help center by \\u003ca href=\\\"https://support.zendesk.com/hc/en-us/articles/203664356-Host-mapping-Changing-the-URL-of-your-Help-Center\\\"\\u003emapping\\u003c/a\\u003e a subdomain of your own domain (such as support.mycompany.com) toyour default Zendesk address with an SNI-based SSL certificate.",
+    "more_info": "https://support.zendesk.com/hc/en-us/articles/203664356-Host-mapping-Changing-the-URL-of-your-Help-Center"
+  },
+  "Disaster recovery": {
+    "description": "Our \\u003ca href=\\\"https://support.zendesk.com/hc/en-us/articles/360022191434-Business-Continuity-and-Disaster-Recovery\\\"\\u003edisaster recovery program\\u003c/a\\u003e ensures that our services remain available or are easily recoverable in the case of a disaster.",
+    "more_info": "https://support.zendesk.com/hc/en-us/articles/360022191434-Business-Continuity-and-Disaster-Recovery"
+  },
+  "Credit card redaction": {
+    "description": "\\u003ca href=\\\"https://support.zendesk.com/hc/en-us/articles/4408822124314-Automatically-redacting-credit-card-numbers-from-tickets\\\"\\u003eRedact credit card numbers\\u003c/a\\u003e in a custom field to prevent the credit card number from being stored in Zendesk so that you can protect confidential information.",
+    "more_info": "https://support.zendesk.com/hc/en-us/articles/4408822124314-Automatically-redacting-credit-card-numbers-from-tickets"
+  },
+  "Data center location": {
+    "description": "\\u003ca href=\\\"https://support.zendesk.com/hc/en-us/articles/360053579674-About-the-Data-Center-Location-add-on\\\"\\u003eSpecify where your account data is stored\\u003c/a\\u003e, whether in the US, APAC, or European Economic Area. Some restrictions apply.",
+    "more_info": "https://support.zendesk.com/hc/en-us/articles/360053579674-About-the-Data-Center-Location-add-on"
+  },
+  "HIPAA enabled": {
+    "description": "The Zendesk Business Associate Agreement (BAA) is available for execution by Subscribers \\u003ca href=\\\"/company/business-associate-agreement\\\"\\u003ehere\\u003c/a\\u003e. For more details, including a list of which Services can be HIPAA-enabled, please see \\u003ca href=\\\"https://support.zendesk.com/hc/en-us/articles/4408832117786\\\"\\u003eAdvanced Compliance\\u003c/a\\u003e.",
+    "more_info": "/company/business-associate-agreement"
+  },
+  "Digital support": {
+    "description": "Access to customer support during your business hours for your highest severity/business-impacting issues.",
+    "more_info": null
+  },
+  "Access to Zendesk Help Center and Community": {
+    "description": "Robust \\u003ca href=\\\"https://support.zendesk.com/\\\"\\u003eZendesk help center\\u003c/a\\u003e filled with self-serve resources to help you successfully set up, and efficiently use Zendesk. You can also get answers to common questions and learn best practices from the \\u003ca href=\\\"https://support.zendesk.com/hc/en-us/community/topics\\\"\\u003eZendesk community\\u003c/a\\u003e and our own experts.",
+    "more_info": "https://support.zendesk.com/"
+  },
+  "Digital onboarding and adoption resources": {
+    "description": "Prescriptive guidance for feature activation, and better usage of core Zendesk capabilities delivered digitally or through engagements and programs.",
+    "more_info": null
+  },
+  "Getting started on-demand training": {
+    "description": "Foundational, role-based video courses to help you onboard agents, admins and developers quicker.",
+    "more_info": null
+  },
+  "Guided learning paths": {
+    "description": "From in-product help and interactive troubleshooting, to expert-curated downloadable tools, these resources help you accelerate feature adoption.",
+    "more_info": null
+  },
+  "Premier plans - 24/7 Proactive support \\u0026 engagement*": {
+    "description": "Our Premier plans provide subscribers white-glove support including increased coverage, expedited response times, and proactive engagement.",
+    "more_info": null
+  },
+  "Professional Services": {
+    "description": "Hands-on configuration, solution design and advisory consultation services for deploying solutions, data migration, custom apps, and extending your platform\u2019s capabilities.",
+    "more_info": null
+  },
+  "Custom training and certifications": {
+    "description": "Empowering Zendesk Admins, Agents, and Developers to take their customer experience practice and careers to the next level.",
+    "more_info": null
+  },
+  "Hands-on help with Zendesk Assist*": {
+    "description": "Subscription managed services offering for customers who need long-term ongoing expertise and resources.",
+    "more_info": null
+  },
+  "Access to conversation tools and APIs": {
+    "description": "Sunshine Conversations\u2019 APIs allow for conversation management, rich messaging, user metadata collection, account management, and more. (\\u003ca href=\\\"https://docs.smooch.io/guide/\\\"\\u003elearn more\\u003c/a\\u003e)",
+    "more_info": "https://docs.smooch.io/guide/"
+  },
+  "Basic Platform Support": {
+    "description": "Weekdays 10am-4pm ET",
+    "more_info": null
+  },
+  "Sunshine Conversations Premier Plans": {
+    "description": "Platform support for Sunshine Conversations is available in 2 plans \u2013 Sunshine Conversations Premier and Sunshine Conversations Premier Enterprise.\\u003cbr /\\u003eBoth platform support plans include Implementation Services, Support Services, Customer Success, and Architecture Services. Sunshine Conversations Premier Enterprise also includes source code access upon request.\\u003cbr /\\u003eSunshine Conversations Premier is required for customers using more than 6,000 additional MAUs, while Sunshine Conversations Premier Enterprise is required for customers using more than 26,000 additional MAUs.\\u003cbr /\\u003e(\\u003ca href=\\\"/platform/conversations/premier-plans/\\\"\\u003elearn more\\u003c/a\\u003e)",
+    "more_info": "/platform/conversations/premier-plans/"
+  },
+  "Monthly Active Users per month": {
+    "description": "Monthly Active Users or \u2018MAU\u2019 is the total number of End-Users engaged in any number of sent or received messages or events within the Sunshine Conversation Service in the month. Monthly Active Users are engaged whether the sent or received messages or event occurs between a) a unique End-User and a Subscriber, b) a unique group of End-Users and a Subscriber, or c) a unique group of End-Users.\\u003cbr /\\u003e*Overage is subject to a True Forward model. \\u003ca href=\\\"https://support.zendesk.com/hc/en-us/articles/4408831944730-Supplemental-terms-Zendesk-s-service-specific-terms\\\"\\u003eLearn more\\u003c/a\\u003e",
+    "more_info": "https://support.zendesk.com/hc/en-us/articles/4408831944730-Supplemental-terms-Zendesk-s-service-specific-terms"
+  },
+  "Notifications per month": {
+    "description": "A Notification is an attempted or sent text, multimedia, and structured messages to any supported Third Party Messaging Platform via the Sunshine Conversation Notification API.\\u003cbr /\\u003e*Overage is subject to a True Forward model. \\u003ca href=\\\"https://support.zendesk.com/hc/en-us/articles/4408831944730-Supplemental-terms-Zendesk-s-service-specific-terms\\\"\\u003eLearn more\\u003c/a\\u003e",
+    "more_info": "https://support.zendesk.com/hc/en-us/articles/4408831944730-Supplemental-terms-Zendesk-s-service-specific-terms"
+  },
+  "Channels": {
+    "description": "Supported channels include WhatsApp, Apple Messages for Business, Google Business Messages, and more. For all supported channels see \\u003ca href=\\\"https://docs.smooch.io/guide/channel-capabilities/\\\"\\u003ehere\\u003c/a\\u003e.",
+    "more_info": "https://docs.smooch.io/guide/channel-capabilities/"
+  },
+  "Orchestration APIs (Switchboard)": {
+    "description": "With Sunshine Conversations\u2019 Switchboard API, you can achieve bot-to-human handover across messaging channels and business systems. The switchboard allows you to programmatically route a user\u2019s conversation through third party systems such as bot frameworks and helpdesk systems, similarly to how an operator patches phone calls via a switchboard. An unlimited number of business systems can be connected to the switchboard and you can move the conversation either to the next integration in the chain or directly to a specific system.",
+    "more_info": null
+  },
+  "Unbranded SDK": {
+    "description": "Web \\u0026 mobile SDK without the branded \u201cPowered by Sunshine Conversations\u201d label. This will require engineering resources and SDK Source Code Access. Note Zendesk Assist packages are available to help with SDK Source Code implementation",
+    "more_info": null
+  },
+  "SDK Source Code Access": {
+    "description": "Access to the web \\u0026 mobile SDK source code for customization enhancements. Available at no extra charge for customers with a Suite Enterprise and Premier Support plan. Note Zendesk Assist packages are available to help with SDK Source Code implementation",
+    "more_info": null
+  },
+  "Bot builder": {
+    "description": "Create a conversational bot that helps your customers with the most common questions. Write custom responses that provide answers, share help center articles, ask info-gathering questions, plus transfer customers to agents.",
+    "more_info": null
+  },
+  "Advanced AI: Advanced bots": {
+    "description": "Individually customized to your industry, advanced bots for messaging and email come pre-trained to instantly understand and resolve the most common types of issues.",
+    "more_info": null
+  },
+  "Advanced AI: Intelligent insights and suggestions": {
+    "description": "Help agents solve customer issues faster with AI-powered insights and the right macros.",
+    "more_info": null
+  },
+  "Advanced AI: Macro suggestions for admins": {
+    "description": "Solve issues faster by using AI to suggest new macros you can create and share with agents.",
+    "more_info": null
+  },
+  "Advanced AI: Intelligent triage": {
+    "description": "Categorize incoming requests automatically by customer intent, language, and sentiment and use these AI insights to create routing rules, workflows, and more.",
+    "more_info": null
+  },
+  "Standard bots": {
+    "description": "Deliver instant answers 24/7 via messaging, email, live chat and ticket forms.",
+    "more_info": null
+  },
+  "Access log": {
+    "description": "View a detailed data access record, including information on who accessed what data, when, and from where. This feature enhances your visibility and control and helps your business meet regulatory requirements.",
+    "more_info": null
+  },
+  "Advanced encryption": {
+    "description": "Encrypt personal information within Zendesk using customer-controlled encryption keys.",
+    "more_info": null
+  },
+  "Advanced data retention policies": {
+    "description": "Set parameters and define what data should be stored or archived and for exactly how long.",
+    "more_info": null
+  },
+  "Advanced redaction": {
+    "description": "Automatically remove customers\u2019 personal information, such as email, phone, credit card information etc., in conversations with agents.",
+    "more_info": null
+  },
+  "Data masking": {
+    "description": "Control which agents can see personal information. Ensure the right people can see the data that is necessary for their work without compromising privacy.",
+    "more_info": null
+  },
+  "Support mobile app": {
+    "description": "Easily manage all conversations on-the-go with the Zendesk Support mobile app for agents. Available for iOS and Android devices. \\u003ca href=\\\"https://support.zendesk.com/hc/en-us/articles/4408846407066-About-the-Zendesk-Support-mobile-app\\\"\\u003e",
+    "more_info": "https://support.zendesk.com/hc/en-us/articles/4408846407066-About-the-Zendesk-Support-mobile-app"
+  },
+  "Advanced AI: Intent suggestions": {
+    "description": "Optimize your bot's coverage and performance with intent suggestions, helping you understand exactly what to automate. ",
+    "more_info": null
+  },
+  "Custom Layouts": {
+    "description": "Arrange and resize components to create workspaces that dynamically update based on the context of a ticket so agents can focus on the task at hand and find information faster.",
+    "more_info": null
+  },
+  "Light agents add-on": {
+    "description": "Unlock enhanced collaboration for your team by adding more light agent seats with our add-on. This valuable extension goes beyond Suite Growth and above plans, allowing team members to stay informed about tickets and provide expert advice through private comments.",
+    "more_info": null
+  },
+  "Advanced AI: Generative AI tools for knowledge": {
+    "description": "Produce and update knowledge base content in record time with Generative AI tools like expand, tone shift, and simplify language.",
+    "more_info": null
+  },
+  "AI-powered bots": {
+    "description": "Scale your service with AI agents that solve customer issues on their own across all of your channels. \\u003ca href=\\\"https://support.zendesk.com/hc/en-us/articles/6970583409690-Overview-of-AI-agents\\\"\\u003eLearn more.\\u003c/a\\u003e",
+    "more_info": "https://support.zendesk.com/hc/en-us/articles/6970583409690-Overview-of-AI-agents"
+  },
+  "Advanced AI: Reporting and insights": {
+    "description": "Analyze and improve operational performance with insights on intelligent triage and agent usage of Generative AI tools, measuring against key customer experience success metrics.",
+    "more_info": null
+  },
+  "Advanced AI: Generative AI tools for agents": {
+    "description": "Assist agents to solve issues faster with Generative AI-powered tools like expand, tone shift, and summarize.",
+    "more_info": null
+  },
+  "Advanced AI: Actionable insights and suggestions": {
+    "description": "Help agents solve customer issues faster with AI-powered insights and actionable next steps using suggested macros and similar tickets.",
+    "more_info": null
+  },
+  "Advanced AI: Macro insights for admins": {
+    "description": "Boost efficiency and cut resolution times with AI that suggests new shared macros for admins to create and share with agents.",
+    "more_info": null
+  },
+  "Unified staff management": {
+    "description": "A single source of truth \\u0026 set of tools for managing staff member settings and information.",
+    "more_info": null
+  },
+  "Custom agent roles": {
+    "description": "Specify permissions for agents and control what they have access to in Zendesk.",
+    "more_info": null
+  },
+  "Audit logs": {
+    "description": "View a detailed list of critical changes that have been made.",
+    "more_info": null
+  },
+  "Standard sandbox": {
+    "description": "Try out features and workflows in a sandbox testing environment.",
+    "more_info": null
+  },
+  "Premium Sandbox": {
+    "description": "Replicate your ticketing system configurations, customizations and metadata into a non-production environment for testing, development and/or training purposes.",
+    "more_info": "https://support.zendesk.com/hc/en-us/articles/6150628316058-About-Zendesk-sandbox-environments"
+  },
+  "Additional Premium Sandboxes": {
+    "description": "Option to buy additional Premium Sandboxes for testing, development, and/or training purposes.",
+    "more_info": null
+  },
+  "Included automated resolutions": {
+    "description": "Each plan includes a set number of automated resolutions for AI agents, allowing AI agents to autonomously resolve customer issues without human intervention. The quantity of ARs varies depending on your plan and agent count. \\u003ca href=\\\"https://support.zendesk.com/hc/en-us/articles/5352026794010-About-automated-resolutions-for-AI-agents\\\"\\u003eLearn more. \\u003c/a\\u003e",
+    "more_info": "https://support.zendesk.com/hc/en-us/articles/5352026794010-About-automated-resolutions-for-AI-agents"
+  },
+  "Additional automated resolutions": {
+    "description": "Customize your automation needs by adding more automated resolutions. Expand the scope of issues your AI agents can handle independently to better align with your business needs. \\u003ca href=\\\"https://support.zendesk.com/hc/en-us/articles/5352026794010-About-automated-resolutions-for-AI-agents\\\"\\u003eLearn more. \\u003c/a\\u003e",
+    "more_info": "https://support.zendesk.com/hc/en-us/articles/5352026794010-About-automated-resolutions-for-AI-agents"
+  }
+}

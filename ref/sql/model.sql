@@ -1836,21 +1836,7 @@ CREATE TRIGGER sync_auth_user_email
     WHEN (OLD."email" IS DISTINCT FROM NEW."email")
     EXECUTE FUNCTION sync_user_email();
 
--- Create function to create UserProfile when new auth.user is created
-CREATE OR REPLACE FUNCTION handle_new_user()
-RETURNS TRIGGER AS $$
-BEGIN
-    INSERT INTO "UserProfiles" ("userId", "name", "userType")
-    VALUES (NEW.id, COALESCE(NEW.raw_user_meta_data->>'name', NEW.email), 'end_user');
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
 
--- Create trigger for new user creation
-CREATE TRIGGER on_auth_user_created
-    AFTER INSERT ON auth.users
-    FOR EACH ROW
-    EXECUTE FUNCTION handle_new_user();
 
 -- Create Audit Trail Tables
 CREATE TYPE audit_action AS ENUM ('create', 'update', 'delete');
@@ -1962,8 +1948,15 @@ BEGIN
             WHEN 'DELETE' THEN OLD."ticketId"
             ELSE NEW."ticketId"
         END,
-        LOWER(TG_OP)::audit_action,
-        auth.uid(),
+        CASE TG_OP
+            WHEN 'INSERT' THEN 'create'
+            WHEN 'UPDATE' THEN 'update'
+            WHEN 'DELETE' THEN 'delete'
+        END::audit_action,
+        COALESCE(auth.uid(), CASE TG_OP
+            WHEN 'DELETE' THEN OLD."submitterId"
+            ELSE NEW."submitterId"
+        END),
         changes_json,
         jsonb_build_object(
             'table', TG_TABLE_NAME,
@@ -2005,8 +1998,15 @@ BEGIN
             WHEN 'DELETE' THEN OLD."commentId"
             ELSE NEW."commentId"
         END,
-        LOWER(TG_OP)::audit_action,
-        auth.uid(),
+        CASE TG_OP
+            WHEN 'INSERT' THEN 'create'
+            WHEN 'UPDATE' THEN 'update'
+            WHEN 'DELETE' THEN 'delete'
+        END::audit_action,
+        COALESCE(auth.uid(), CASE TG_OP
+            WHEN 'DELETE' THEN OLD."authorId"
+            ELSE NEW."authorId"
+        END),
         CASE TG_OP
             WHEN 'UPDATE' THEN jsonb_build_object(
                 'content', jsonb_build_object(
