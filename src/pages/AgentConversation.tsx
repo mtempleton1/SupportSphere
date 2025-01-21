@@ -28,7 +28,7 @@ interface UserProfile {
   Roles: Role[]
 }
 
-export function AgentPage() {
+export function AgentConversation() {
   const navigate = useNavigate()
   const [account, setAccount] = useState<Account | null>(null)
   const [loading, setLoading] = useState(true)
