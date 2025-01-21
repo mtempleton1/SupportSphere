@@ -50,7 +50,7 @@ In App.jsx, create a Supabase client using your project URL and public API (anon
 
 Project URL
 matt.templeton@gauntletai.com's Org / Scratch
-https://vhyshcwkqursyslxuyon.supabase.co
+https://womlnlgcrrmdgnimavlk.supabase.co
 
 Anon key
 matt.templeton@gauntletai.com's Org / Scratch
