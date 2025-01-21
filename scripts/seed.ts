@@ -278,7 +278,7 @@ async function seedCompanyData() {
       if (groupsError) throw groupsError
       console.log(`Created groups for ${account.name}`)
 
-      // 4. Create Organizations
+      // 4. Create Organizations (without defaultGroupId initially)
       const numOrgs = faker.number.int({ min: 3, max: 8 })
       const organizations = Array.from({ length: numOrgs }, () => ({
         name: faker.company.name(),
@@ -290,7 +290,7 @@ async function seedCompanyData() {
           region: faker.location.country()
         }),
         isShared: faker.datatype.boolean(),
-        defaultGroupId: createdGroups[0].groupId,
+        defaultGroupId: null, // Set to null initially
         accountId: account.accountId
       }))
 
@@ -301,6 +301,113 @@ async function seedCompanyData() {
 
       if (orgsError) throw orgsError
       console.log(`Created ${numOrgs} organizations for ${account.name}`)
+
+      // 9. Create Group-Organization Mappings (moved before defaultGroupId update)
+      const groupOrgMappings = createdOrgs.flatMap(org => {
+        const numGroups = faker.number.int({ min: 1, max: 2 })
+        return faker.helpers.arrayElements(createdGroups, numGroups).map(group => ({
+          groupId: group.groupId,
+          organizationId: org.organizationId
+        }))
+      })
+
+      const { error: groupOrgError } = await supabase
+        .from('GroupOrganizationMapping')
+        .insert(groupOrgMappings)
+
+      if (groupOrgError) throw groupOrgError
+      console.log(`Created group-organization mappings for ${account.name}`)
+
+      // Update organizations with defaultGroupId
+      for (const org of createdOrgs) {
+        // Find the first group mapped to this organization
+        const orgMapping = groupOrgMappings.find(mapping => mapping.organizationId === org.organizationId)
+        const { error: updateError } = await supabase
+          .from('Organizations')
+          .update({ defaultGroupId: orgMapping?.groupId || createdGroups[0].groupId })
+          .eq('organizationId', org.organizationId)
+        
+        if (updateError) throw updateError
+      }
+      console.log(`Updated organizations with default groups for ${account.name}`)
+
+      // 7. Add Organization Domains
+      const orgDomains = createdOrgs.map(org => ({
+        organizationId: org.organizationId,
+        domain: faker.internet.domainName()
+      }))
+
+      const { error: orgDomainsError } = await supabase
+        .from('OrganizationDomains')
+        .insert(orgDomains)
+
+      if (orgDomainsError) throw orgDomainsError
+      console.log(`Added domains for organizations in ${account.name}`)
+
+      // 8. Add Organization Tags
+      const availableTags = [
+        'VIP',
+        'Enterprise',
+        'SMB',
+        'Strategic',
+        'Partner',
+        'Prospect',
+        'Trial',
+        'Churned',
+        'At Risk',
+        'High Value'
+      ]
+
+      const orgTags = createdOrgs.flatMap(org => {
+        const numTags = faker.number.int({ min: 2, max: 5 })
+        // Get unique random tags for this organization
+        const orgTagsSet = new Set<string>()
+        while (orgTagsSet.size < numTags) {
+          orgTagsSet.add(faker.helpers.arrayElement(availableTags))
+        }
+        
+        return Array.from(orgTagsSet).map(tag => ({
+          organizationId: org.organizationId,
+          tag: tag
+        }))
+      })
+
+      const { error: orgTagsError } = await supabase
+        .from('OrganizationTags')
+        .insert(orgTags)
+
+      if (orgTagsError) throw orgTagsError
+      console.log(`Added tags for organizations in ${account.name}`)
+
+      // Create brands for the account
+      const brands = [
+        {
+          accountId: account.accountId,
+          name: account.name,
+          description: 'Default support brand',
+          subdomain: account.subdomain,
+          isDefault: true,
+          isAgentBrand: false,
+          isActive: true
+        },
+        {
+          accountId: account.accountId,
+          name: `${account.name} (Agent)`,
+          description: 'Internal agent support brand',
+          subdomain: `${account.subdomain}-agent`,
+          isDefault: false,
+          isAgentBrand: true,
+          isActive: true
+        }
+      ]
+
+      const { data: createdBrands, error: brandsError } = await supabase
+        .from('Brands')
+        .insert(brands)
+        .select()
+
+      if (brandsError) throw brandsError
+      console.log(`Created brands for ${account.name}`)
 
       // 5. Create Users with different roles
       // Reduce number of users to create
@@ -314,16 +421,24 @@ async function seedCompanyData() {
       const authUsers: User[] = []
       for (let i = 0; i < userEmails.length; i++) {
         try {
-          // Add a longer delay between user creations (1 second)
-          if (i > 0) {
-            await new Promise(resolve => setTimeout(resolve, 1000))
-          }
+          // Add a longer delay between user creations (2 seconds)
+          // if (i > 0) {
+          //   await new Promise(resolve => setTimeout(resolve, 100))
+          // }
 
-          console.log(`Creating auth user ${i + 1} of ${userEmails.length}: ${userEmails[i]}`)
+          const email = userEmails[i]
+          console.log(`Creating auth user ${i + 1} of ${userEmails.length}: ${email}`)
+          
           const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
-            email: userEmails[i],
-            password: userPasswords[i],
-            email_confirm: true
+            email: email,
+            password: 'Password123!', // Use a consistent, valid password
+            email_confirm: true,
+            user_metadata: {
+              full_name: faker.person.fullName()
+            },
+            app_metadata: {
+              provider: 'email'
+            }
           })
 
           if (authError) {
@@ -456,61 +571,258 @@ async function seedCompanyData() {
       if (userGroupsError) throw userGroupsError
       console.log(`Assigned users to groups for ${account.name}`)
 
-      // 7. Add Organization Domains
-      const orgDomains = createdOrgs.map(org => ({
-        organizationId: org.organizationId,
-        domain: faker.internet.domainName()
-      }))
+      // Create tickets for this account
+      console.log(`Creating tickets for ${account.name}...`)
 
-      const { error: orgDomainsError } = await supabase
-        .from('OrganizationDomains')
-        .insert(orgDomains)
+      // Get the default brand for this account
+      const { data: defaultBrand, error: brandError } = await supabase
+        .from('Brands')
+        .select()
+        .eq('accountId', account.accountId)
+        .eq('isDefault', true)
+        .single()
 
-      if (orgDomainsError) throw orgDomainsError
-      console.log(`Added domains for organizations in ${account.name}`)
+      if (brandError || !defaultBrand) throw new Error(`No default brand found for account ${account.name}`)
 
-      // 8. Add Organization Tags
-      const orgTags = createdOrgs.flatMap(org => {
-        const numTags = faker.number.int({ min: 2, max: 5 })
-        return Array.from({ length: numTags }, () => ({
-          organizationId: org.organizationId,
-          tag: faker.helpers.arrayElement([
-            'VIP',
-            'Enterprise',
-            'SMB',
-            'Strategic',
-            'Partner',
-            'Prospect',
-            'Trial',
-            'Churned',
-            'At Risk',
-            'High Value'
-          ])
-        }))
-      })
+      // Get users for this account for assignment
+      const accountStaffUsers = createdUsers.filter(u => u.userType === 'staff')
+      const accountEndUsers = createdUsers.filter(u => u.userType === 'end_user')
 
-      const { error: orgTagsError } = await supabase
-        .from('OrganizationTags')
-        .insert(orgTags)
+      // Create 10-20 tickets per account with varying properties
+      const numTickets = faker.number.int({ min: 10, max: 20 })
+      
+      // Keep track of problem tickets for linking incidents
+      const problemTickets: Database['public']['Tables']['Tickets']['Row'][] = []
+      
+      for (let i = 0; i < numTickets; i++) {
+        // Select a random requester from end users
+        const requester = faker.helpers.arrayElement(accountEndUsers)
+        
+        // Randomly decide if ticket should be assigned
+        const shouldAssign = faker.datatype.boolean()
+        const assignee = shouldAssign ? faker.helpers.arrayElement(accountStaffUsers) : null
+        const assigneeGroup = shouldAssign && !assignee ? faker.helpers.arrayElement(createdGroups) : null
 
-      if (orgTagsError) throw orgTagsError
-      console.log(`Added tags for organizations in ${account.name}`)
+        // Determine ticket type - ensure we have some problem tickets before creating incidents
+        let ticketType: 'question' | 'incident' | 'problem' | 'task'
+        if (problemTickets.length === 0) {
+          // First few tickets should include some problems
+          ticketType = faker.helpers.arrayElement(['question', 'problem', 'task', 'problem'])
+        } else {
+          ticketType = faker.helpers.arrayElement(['question', 'incident', 'problem', 'task'])
+        }
 
-      // 9. Create Group-Organization Mappings
-      const groupOrgMappings = createdOrgs.flatMap(org => {
-        const numGroups = faker.number.int({ min: 1, max: 2 })
-        return faker.helpers.arrayElements(createdGroups, numGroups).map(group => ({
-          groupId: group.groupId,
-          organizationId: org.organizationId
-        }))
-      })
+        // Generate ticket data
+        const ticketData = {
+          accountId: account.accountId,
+          brandId: defaultBrand.brandId,
+          requesterId: requester.userId,
+          submitterId: requester.userId, // Usually same as requester
+          assigneeId: assignee?.userId || null,
+          assigneeGroupId: assigneeGroup?.groupId || null,
+          subject: faker.helpers.arrayElement([
+            'Cannot login to the application',
+            'Need help with integration',
+            'Billing question',
+            'Feature request: Dark mode',
+            'System is running slow',
+            'Error when uploading files',
+            'Password reset not working',
+            'API documentation unclear',
+            'Mobile app crashes on startup',
+            'Need to upgrade subscription'
+          ]),
+          description: faker.lorem.paragraphs(2),
+          status: faker.helpers.arrayElement(['new', 'open', 'pending', 'on_hold', 'solved', 'closed']),
+          type: ticketType,
+          priority: faker.helpers.arrayElement(['low', 'normal', 'high', 'urgent']),
+          channelId: null, // Would need to create channels first
+          isPublic: faker.datatype.boolean(0.8), // 80% chance of being public
+          createdAt: faker.date.past({ years: 1 }).toISOString(),
+          // If this is an incident ticket, link it to a random problem ticket
+          problemTicketId: ticketType === 'incident' && problemTickets.length > 0 
+            ? faker.helpers.arrayElement(problemTickets).ticketId 
+            : null
+        }
 
-      const { error: groupOrgError } = await supabase
-        .from('GroupOrganizationMapping')
-        .insert(groupOrgMappings)
+        // Create the ticket
+        const { data: ticket, error: ticketError } = await supabase
+          .from('Tickets')
+          .insert(ticketData)
+          .select()
+          .single()
 
-      if (groupOrgError) throw groupOrgError
-      console.log(`Created group-organization mappings for ${account.name}`)
+        if (ticketError || !ticket) throw ticketError
+
+        // If this is a problem ticket, add it to our list for future incident references
+        if (ticket.type === 'problem') {
+          problemTickets.push(ticket)
+        }
+
+        // Add 0-5 comments to the ticket
+        const numComments = faker.number.int({ min: 0, max: 5 })
+        const commentPromises = Array.from({ length: numComments }, async () => {
+          // Randomly choose between requester and assignee for comment author
+          const possibleAuthors = [
+            requester,
+            ...(assignee ? [assignee] : []),
+            ...accountStaffUsers.filter(u => u.userId !== assignee?.userId)
+          ]
+          const commentAuthor = faker.helpers.arrayElement(possibleAuthors)
+
+          const commentData = {
+            ticketId: ticket.ticketId,
+            authorId: commentAuthor.userId,
+            content: faker.lorem.paragraph(),
+            isPublic: faker.datatype.boolean(0.7), // 70% chance of being public
+            createdAt: faker.date.between({ 
+              from: ticket.createdAt ? new Date(ticket.createdAt) : new Date(Date.now() - 24 * 60 * 60 * 1000), // Default to 24h ago if no createdAt
+              to: new Date() 
+            }).toISOString()
+          }
+
+          return supabase.from('TicketComments').insert(commentData)
+        })
+
+        await Promise.all(commentPromises)
+
+        // Add followers (30% chance per staff user)
+        const followerPromises = accountStaffUsers.map(async (user) => {
+          if (faker.datatype.boolean(0.3)) {
+            return supabase
+              .from('TicketFollowers')
+              .insert({
+                ticketId: ticket.ticketId,
+                userId: user.userId
+              })
+          }
+        })
+
+        await Promise.all(followerPromises)
+
+        // Add CCs (20% chance per staff user)
+        const ccPromises = accountStaffUsers.map(async (user) => {
+          if (faker.datatype.boolean(0.2)) {
+            return supabase
+              .from('TicketCCs')
+              .insert({
+                ticketId: ticket.ticketId,
+                userId: user.userId
+              })
+          }
+        })
+
+        await Promise.all(ccPromises)
+
+        // Add tags (1-3 tags per ticket)
+        const availableTags = [
+          'bug',
+          'feature-request',
+          'urgent',
+          'customer-success',
+          'billing',
+          'technical',
+          'documentation',
+          'mobile',
+          'web',
+          'api',
+          'security',
+          'performance'
+        ]
+
+        const numTags = faker.number.int({ min: 1, max: 3 })
+        const selectedTags = faker.helpers.arrayElements(availableTags, numTags)
+        
+        const tagPromises = selectedTags.map(tag => 
+          supabase
+            .from('TicketTags')
+            .insert({
+              ticketId: ticket.ticketId,
+              tag: tag
+            })
+        )
+
+        await Promise.all(tagPromises)
+
+        // Add custom field values (if any exist)
+        const { data: customFields } = await supabase
+          .from('CustomFields')
+          .select()
+          .eq('accountId', account.accountId)
+
+        if (customFields && customFields.length > 0) {
+          const customFieldPromises = customFields.map(field => {
+            let value
+            switch (field.fieldType) {
+              case 'text':
+                value = faker.lorem.sentence()
+                break
+              case 'number':
+                value = faker.number.int({ min: 1, max: 100 })
+                break
+              case 'decimal':
+                value = faker.number.float({ min: 0, max: 100, fractionDigits: 2 })
+                break
+              case 'date':
+                value = faker.date.recent().toISOString()
+                break
+              case 'boolean':
+                value = faker.datatype.boolean()
+                break
+              case 'dropdown':
+                const fieldOptions = typeof field.options === 'object' && field.options !== null ? 
+                  (field.options as { options?: string[] }).options : undefined
+                if (fieldOptions) {
+                  value = faker.helpers.arrayElement(fieldOptions)
+                }
+                break
+              default:
+                value = null
+            }
+
+            if (value !== null) {
+              return supabase
+                .from('TicketCustomFieldValues')
+                .insert({
+                  ticketId: ticket.ticketId,
+                  fieldId: field.fieldId,
+                  value: { value }
+                })
+            }
+          })
+
+          await Promise.all(customFieldPromises.filter(Boolean))
+        }
+
+        // Mark ticket as read by assignee and some random staff (50% chance)
+        if (assignee) {
+          await supabase
+            .from('TicketReadStatus')
+            .insert({
+              ticketId: ticket.ticketId,
+              userId: assignee.userId,
+              lastReadAt: new Date().toISOString()
+            })
+        }
+
+        const readStatusPromises = accountStaffUsers
+          .filter(u => u.userId !== assignee?.userId)
+          .map(async (user) => {
+            if (faker.datatype.boolean(0.5)) {
+              return supabase
+                .from('TicketReadStatus')
+                .insert({
+                  ticketId: ticket.ticketId,
+                  userId: user.userId,
+                  lastReadAt: new Date().toISOString()
+                })
+            }
+          })
+
+        await Promise.all(readStatusPromises)
+      }
+
+      console.log(`Created ${numTickets} tickets for ${account.name}`)
     }
 
     console.log('Company data seeding completed successfully!')
@@ -524,12 +836,36 @@ async function seedDatabase() {
   try {
     console.log('Starting database seeding...')
 
-    // Reset the entire database
-    await resetDatabase()
+    // Check if JSON files exist
+    const suiteFeaturesPath = path.join(__dirname, '../ref/zendesk/plans_and_features/suite_features.json')
+    const buildYourOwnFeaturesPath = path.join(__dirname, '../ref/zendesk/plans_and_features/build_your_own_features.json')
+
+    if (!fs.existsSync(suiteFeaturesPath)) {
+      throw new Error(`Suite features file not found at: ${suiteFeaturesPath}`)
+    }
+    if (!fs.existsSync(buildYourOwnFeaturesPath)) {
+      throw new Error(`Build your own features file not found at: ${buildYourOwnFeaturesPath}`)
+    }
 
     // Read JSON files
-    const suiteFeatures = JSON.parse(fs.readFileSync(path.join(__dirname, '../ref/zendesk/plans_and_features/suite_features.json'), 'utf8')) as PlansJson
-    const buildYourOwnFeatures = JSON.parse(fs.readFileSync(path.join(__dirname, '../ref/zendesk/plans_and_features/build_your_own_features.json'), 'utf8')) as PlansJson
+    console.log('Reading JSON files...')
+    let suiteFeatures: PlansJson
+    let buildYourOwnFeatures: PlansJson
+
+    try {
+      suiteFeatures = JSON.parse(fs.readFileSync(suiteFeaturesPath, 'utf8'))
+      buildYourOwnFeatures = JSON.parse(fs.readFileSync(buildYourOwnFeaturesPath, 'utf8'))
+    } catch (error) {
+      throw new Error(`Error reading JSON files: ${error instanceof Error ? error.message : String(error)}`)
+    }
+
+    // Validate JSON data
+    if (!suiteFeatures['Suite Team']) {
+      throw new Error('Missing Suite Team data in suite_features.json')
+    }
+    if (!buildYourOwnFeatures['Support Team']) {
+      throw new Error('Missing Support Team data in build_your_own_features.json')
+    }
 
     // Create plans
     console.log('Creating plans...')
@@ -573,12 +909,32 @@ async function seedDatabase() {
       }
     ]
 
-    const { data: plans, error: plansError } = await supabase
+    // Log the plans data for debugging
+    console.log('Plans data to insert:', JSON.stringify(plansData, null, 2))
+
+    const { data: plans, error: plansError, status, statusText } = await supabase
       .from('Plans')
       .insert(plansData)
       .select()
-    if (plansError) throw plansError
-    console.log('Plans created successfully')
+    
+    if (plansError || !plans) {
+      console.error('Error creating plans:', {
+        error: plansError,
+        status,
+        statusText,
+        data: plans
+      })
+      throw new Error(`Failed to create plans: ${JSON.stringify({
+        error: plansError,
+        status,
+        statusText,
+        data: plans
+      })}`)
+    }
+    if (plans.length === 0) {
+      throw new Error('No plans were created')
+    }
+    console.log('Plans created successfully:', plans.length, 'plans')
 
     // Create features
     console.log('Creating features...')
@@ -614,7 +970,14 @@ async function seedDatabase() {
       .from('Features')
       .insert(featuresData)
       .select()
-    if (featuresError) throw featuresError
+    
+    if (featuresError) {
+      console.error('Error creating features:', featuresError)
+      throw new Error(`Failed to create features: ${JSON.stringify(featuresError)}`)
+    }
+    if (!features || features.length === 0) {
+      throw new Error('No features were created')
+    }
     console.log('Features created successfully')
 
     // Create plan-feature mappings
@@ -716,8 +1079,13 @@ async function seedDatabase() {
 
     console.log('Database seeding completed successfully!')
   } catch (error) {
-    console.error('Error seeding database:', error)
-    throw error
+    if (error instanceof Error) {
+      console.error('Error seeding database:', error.message)
+      throw error
+    } else {
+      console.error('Unknown error seeding database:', error)
+      throw new Error(`Unknown error seeding database: ${JSON.stringify(error)}`)
+    }
   }
 }
 
