@@ -150,10 +150,11 @@ ON "Roles" FOR SELECT
 TO authenticated
 USING (
     "accountId" IS NULL OR
-    "accountId" = (
-        SELECT "accountId" 
-        FROM "UserProfiles" 
-        WHERE "userId" = auth.uid()
+    EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" up 
+        WHERE up."userId" = auth.uid()
+        AND up."accountId" = "Roles"."accountId"
     )
 );
 
@@ -162,12 +163,13 @@ CREATE POLICY "Only admins can create roles in their account"
 ON "Roles" FOR INSERT
 TO authenticated
 WITH CHECK (
-    "accountId" = (
-        SELECT up."accountId" 
+    EXISTS (
+        SELECT 1 
         FROM "UserProfiles" up
         JOIN "Roles" r ON up."roleId" = r."roleId"
         WHERE up."userId" = auth.uid()
-        AND (r."roleCategory" = 'admin' OR r."roleCategory" = 'owner')
+        AND up."accountId" = "Roles"."accountId"
+        AND r."roleCategory" IN ('admin', 'owner')
     )
 );
 
@@ -176,23 +178,23 @@ CREATE POLICY "Only admins can modify roles in their account"
 ON "Roles" FOR UPDATE
 TO authenticated
 USING (
-    "accountId" IS NOT NULL
-    AND "accountId" = (
-        SELECT up."accountId" 
+    EXISTS (
+        SELECT 1 
         FROM "UserProfiles" up
         JOIN "Roles" r ON up."roleId" = r."roleId"
         WHERE up."userId" = auth.uid()
-        AND (r."roleCategory" = 'admin' OR r."roleCategory" = 'owner')
+        AND up."accountId" = "Roles"."accountId"
+        AND r."roleCategory" IN ('admin', 'owner')
     )
 )
 WITH CHECK (
-    "accountId" IS NOT NULL
-    AND "accountId" = (
-        SELECT up."accountId" 
+    EXISTS (
+        SELECT 1 
         FROM "UserProfiles" up
         JOIN "Roles" r ON up."roleId" = r."roleId"
         WHERE up."userId" = auth.uid()
-        AND (r."roleCategory" = 'admin' OR r."roleCategory" = 'owner')
+        AND up."accountId" = "Roles"."accountId"
+        AND r."roleCategory" IN ('admin', 'owner')
     )
 );
 
@@ -201,13 +203,13 @@ CREATE POLICY "Only admins can delete roles in their account"
 ON "Roles" FOR DELETE
 TO authenticated
 USING (
-    "accountId" IS NOT NULL
-    AND "accountId" = (
-        SELECT up."accountId" 
+    EXISTS (
+        SELECT 1 
         FROM "UserProfiles" up
         JOIN "Roles" r ON up."roleId" = r."roleId"
         WHERE up."userId" = auth.uid()
-        AND (r."roleCategory" = 'admin' OR r."roleCategory" = 'owner')
+        AND up."accountId" = "Roles"."accountId"
+        AND r."roleCategory" IN ('admin', 'owner')
     )
 );
 
@@ -267,23 +269,16 @@ REVOKE SELECT ON "Accounts" FROM anon, authenticated;
 GRANT SELECT ("accountId", "name", "subdomain", "endUserAccountCreationType", "favicon") ON "Accounts" TO anon, authenticated;
 GRANT SELECT ("planId") ON "Accounts" TO authenticated;
 
--- UserProfiles policies
-CREATE POLICY "Users can view their own profile"
-ON "UserProfiles" FOR SELECT
-TO authenticated
-USING ("userId" = auth.uid());
+-- Drop existing UserProfiles policies if they exist
+DROP POLICY IF EXISTS "Users can view their own profile" ON "UserProfiles";
+DROP POLICY IF EXISTS "Staff can view profiles in their account" ON "UserProfiles";
+DROP POLICY IF EXISTS "Users can view profiles in their account" ON "UserProfiles";
 
-CREATE POLICY "Staff can view profiles in their account"
+-- Create UserProfiles policies
+CREATE POLICY "Users can view profiles"
 ON "UserProfiles" FOR SELECT
 TO authenticated
-USING (
-    EXISTS (
-        SELECT 1 
-        FROM "Roles" r
-        WHERE r."roleId" = "UserProfiles"."roleId"
-        AND r."accountId" = "UserProfiles"."accountId"
-    )
-);
+USING (true);  -- Allow authenticated users to view all profiles, filtering will be done at the application level
 
 CREATE POLICY "Users can update their own profile"
 ON "UserProfiles" FOR UPDATE

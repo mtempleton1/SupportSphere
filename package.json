@@ -11,8 +11,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "seed": "cross-env tsx scripts/seed.ts",
-    "gen:types": "supabase gen types typescript --project-id \"zadccprxlvpkjhjrsaky\" --schema public > src/types/supabase.ts",
-    "reset": "npx supabase db reset --linked && npx tsx scripts/instantiate.ts && npx tsx scripts/seed.ts"
+    "gen:types": "supabase gen types typescript --project-id \"hmuziybgjrbclhxtqycv\" --schema public > src/types/supabase.ts",
+    "reset": "npx supabase db reset --linked && npx tsx scripts/seed.ts && npm run dev"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.48.0",
