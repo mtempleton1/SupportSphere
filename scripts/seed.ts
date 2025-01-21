@@ -140,23 +140,55 @@ async function seedCompanyData() {
       throw new Error(`Failed to fetch plans: ${plansError?.message || 'No plans found'}`)
     }
 
-    // Create accounts and their associated data
+    // Process companies sequentially instead of in parallel
     for (const company of companies) {
-      console.log(`Creating account for ${company.name}...`)
+      console.log(`Processing ${company.name}...`)
       
+      // Create auth users for this company
+      const numEndUsers = 5
+      const totalUsers = 11 + numEndUsers
+      const userDataForCompany = Array.from({ length: totalUsers }, () => ({
+        email: faker.internet.email(),
+        password: 'Password123!',
+        email_confirm: true,
+        user_metadata: {
+          full_name: faker.person.fullName()
+        },
+        app_metadata: {
+          provider: 'email'
+        }
+      }))
+
+      // Batch create auth users in groups of 10
+      const batchSize = 10
+      const authUsers: User[] = []
+      for (let i = 0; i < userDataForCompany.length; i += batchSize) {
+        const batch = userDataForCompany.slice(i, i + batchSize)
+        const createPromises = batch.map(userData => 
+          supabase.auth.admin.createUser(userData)
+            .then(({ data }) => data?.user)
+            .catch(error => {
+              console.error('Failed to create auth user:', error)
+              return null
+            })
+        )
+        const users = await Promise.all(createPromises)
+        authUsers.push(...users.filter((user): user is User => user !== null))
+      }
+
       // Find the corresponding plan
       const plan = plans.find(p => p.name === company.planName)
       if (!plan) {
         throw new Error(`Plan not found for ${company.name}: ${company.planName}`)
       }
-      
-      // 1. Create Account (now with planId)
+
+      // Create account and initial data
       const { data: account, error: accountError } = await supabase
         .from('Accounts')
         .insert({
           name: company.name,
           subdomain: company.subdomain,
-          planId: plan.planId // Set the planId
+          planId: plan.planId
         })
         .select()
         .single()
@@ -428,63 +460,6 @@ async function seedCompanyData() {
 
       if (brandsError) throw brandsError
       console.log(`Created brands for ${account.name}`)
-
-      // 5. Create Users with different roles
-      // Reduce number of users to create
-      const numEndUsers = 5 // Reduced from 10
-      const totalUsers = 11 + numEndUsers // 6 staff + 5 end users
-      const userEmails = Array.from({ length: totalUsers }, () => faker.internet.email())
-      const userPasswords = Array.from({ length: totalUsers }, () => faker.internet.password())
-      
-      // Create auth users sequentially with longer delays
-      console.log('Creating auth users...')
-      const authUsers: User[] = []
-      for (let i = 0; i < userEmails.length; i++) {
-        try {
-          // Add a longer delay between user creations (2 seconds)
-          // if (i > 0) {
-          //   await new Promise(resolve => setTimeout(resolve, 100))
-          // }
-
-          const email = userEmails[i]
-          console.log(`Creating auth user ${i + 1} of ${userEmails.length}: ${email}`)
-          
-          const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
-            email: email,
-            password: 'Password123!', // Use a consistent, valid password
-            email_confirm: true,
-            user_metadata: {
-              full_name: faker.person.fullName()
-            },
-            app_metadata: {
-              provider: 'email'
-            }
-          })
-
-          if (authError) {
-            console.error(`Error creating auth user ${i + 1}:`, authError)
-            // Skip this user and continue with the next one instead of throwing
-            continue
-          }
-
-          if (!authUser?.user) {
-            console.error(`No user returned when creating auth user ${i + 1}`)
-            continue
-          }
-
-          authUsers.push(authUser.user)
-          console.log(`Successfully created auth user ${i + 1}`)
-        } catch (error) {
-          console.error(`Failed to create auth user ${i + 1}:`, error)
-          // Skip this user and continue with the next one
-          continue
-        }
-      }
-
-      // Only proceed if we have at least some users created
-      if (authUsers.length === 0) {
-        throw new Error('Failed to create any auth users')
-      }
 
       // Now create user profiles for successfully created auth users
       const users: Database['public']['Tables']['UserProfiles']['Insert'][] = [
