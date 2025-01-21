@@ -871,8 +871,8 @@ async function seedDatabase() {
     console.log('Starting database seeding...')
 
     // Check if JSON files exist
-    const suiteFeaturesPath = path.join(__dirname, '../ref/zendesk/plans_and_features/suite_features.json')
-    const buildYourOwnFeaturesPath = path.join(__dirname, '../ref/zendesk/plans_and_features/build_your_own_features.json')
+    const suiteFeaturesPath = path.join(__dirname, '../docs/zendesk/plans_and_features/suite_features.json')
+    const buildYourOwnFeaturesPath = path.join(__dirname, '../docs/zendesk/plans_and_features/build_your_own_features.json')
 
     if (!fs.existsSync(suiteFeaturesPath)) {
       throw new Error(`Suite features file not found at: ${suiteFeaturesPath}`)
