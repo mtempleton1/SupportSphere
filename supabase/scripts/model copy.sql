@@ -22,13 +22,13 @@ CREATE TABLE "Plans" (
     "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Enable RLS for Plans table
+-- Enable RLS for Plans
 ALTER TABLE "Plans" ENABLE ROW LEVEL SECURITY;
 
--- Create READ policy for Plans - anyone can read
-CREATE POLICY "Anyone can read plans"
-ON "Plans" FOR SELECT
-TO public, anon
+-- Create policies for Plans
+CREATE POLICY "Plans are viewable by everyone" 
+ON "Plans" FOR SELECT 
+TO authenticated, anon
 USING (true);
 
 -- Create Accounts Table second (depends only on Plans)
@@ -43,6 +43,8 @@ CREATE TABLE "Accounts" (
     "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Enable RLS for Accounts
+ALTER TABLE "Accounts" ENABLE ROW LEVEL SECURITY;
 
 -- Create Roles Table third (now Accounts exists)
 CREATE TABLE "Roles" (
@@ -75,7 +77,7 @@ CREATE TABLE "Roles" (
 );
 
 -- Enable RLS for Roles
--- ALTER TABLE "Roles" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Roles" ENABLE ROW LEVEL SECURITY;
 
 -- Create Groups Table (depends on Accounts)
 CREATE TABLE "Groups" (
@@ -84,17 +86,14 @@ CREATE TABLE "Groups" (
     "name" VARCHAR(255) NOT NULL,
     "description" TEXT,
     "isPrivate" BOOLEAN DEFAULT FALSE,
+    "isDefault" BOOLEAN DEFAULT FALSE,
     "solvedTicketReassignmentStrategy" VARCHAR(50),
     "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Enable RLS for Groups
--- ALTER TABLE "Groups" ENABLE ROW LEVEL SECURITY;
-
--- Add defaultGroupId to Accounts table (after Groups table creation)
-ALTER TABLE "Accounts"
-ADD COLUMN "defaultGroupId" UUID REFERENCES "Groups"("groupId") ON DELETE SET NULL;
+ALTER TABLE "Groups" ENABLE ROW LEVEL SECURITY;
 
 -- Create Organizations Table (depends on Groups and Accounts)
 CREATE TABLE "Organizations" (
@@ -111,9 +110,9 @@ CREATE TABLE "Organizations" (
 );
 
 -- Enable RLS for Organizations
--- ALTER TABLE "Organizations" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Organizations" ENABLE ROW LEVEL SECURITY;
 
--- Create UserProfile Table that extends auth.users
+-- Create User Profile Table that extends auth.users
 CREATE TABLE "UserProfiles" (
     "userId" UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     "name" VARCHAR(255) NOT NULL,
@@ -130,108 +129,12 @@ CREATE TABLE "UserProfiles" (
     CONSTRAINT "unique_email_per_account" UNIQUE("userId", "accountId")
 );
 
--- Enable RLS for Accounts
-ALTER TABLE "Accounts" ENABLE ROW LEVEL SECURITY;
-
--- First revoke all privileges from public and authenticated
-REVOKE ALL ON "Accounts" FROM public, authenticated, anon;
-
--- Grant basic read access to specific columns for both public and authenticated users
-GRANT SELECT ("accountId", "name", "subdomain", "favicon", "endUserAccountCreationType") 
-ON "Accounts" TO public, authenticated, anon;
-
--- Create public read policy for basic account info
-CREATE POLICY "Public can view basic account info"
-ON "Accounts" FOR SELECT
-TO public, authenticated, anon
-USING (true);
-
--- Drop the security definer function as it's no longer needed
-DROP FUNCTION IF EXISTS get_account_info;
-
 -- Update Accounts to reference owner
 ALTER TABLE "Accounts"
 ADD COLUMN "ownerId" UUID REFERENCES "UserProfiles"("userId") ON DELETE SET NULL;
 
 -- Enable RLS for UserProfiles
 ALTER TABLE "UserProfiles" ENABLE ROW LEVEL SECURITY;
-
--- Create SELECT policy - Users can view their own profile or staff can view profiles in their account
-CREATE POLICY "Users can view their own profile"
-ON "UserProfiles" FOR SELECT
-TO authenticated
-USING (
-    auth.uid() = "userId" -- User can view their own profile
-    OR (
-        -- Staff can view profiles in their account
-        (auth.jwt()->>'userType')::text = 'staff'
-        AND (auth.jwt()->'app_metadata'->>'accountId')::uuid = "accountId"
-    )
-);
-
-
--- Create INSERT policy - Users can create their own profile or admins can create profiles in their account
-CREATE POLICY "Users can create their own profile or admins can create profiles in their account"
-ON "UserProfiles" FOR INSERT
-TO authenticated
-WITH CHECK (
-    auth.uid() = "userId" -- User can create their own profile
-    OR (
-        -- Admins can create profiles in their account
-        EXISTS (
-            SELECT 1 FROM "UserProfiles" creator
-            JOIN "Roles" r ON creator."roleId" = r."roleId"
-            WHERE creator."userId" = auth.uid()
-            AND creator."accountId" = "UserProfiles"."accountId"
-            AND r."roleCategory" = 'admin'
-        )
-    )
-);
-
--- Create UPDATE policy - Users can update their own profile or admins can update profiles in their account
-CREATE POLICY "Users can update their own profile or admins can update profiles in their account"
-ON "UserProfiles" FOR UPDATE
-TO authenticated
-USING (
-    auth.uid() = "userId" -- User can update their own profile
-    OR (
-        -- Admins can update profiles in their account
-        EXISTS (
-            SELECT 1 FROM "UserProfiles" updater
-            JOIN "Roles" r ON updater."roleId" = r."roleId"
-            WHERE updater."userId" = auth.uid()
-            AND updater."accountId" = "UserProfiles"."accountId"
-            AND r."roleCategory" = 'admin'
-        )
-    )
-)
-WITH CHECK (
-    auth.uid() = "userId" -- User can update their own profile
-    OR (
-        -- Admins can update profiles in their account
-        EXISTS (
-            SELECT 1 FROM "UserProfiles" updater
-            JOIN "Roles" r ON updater."roleId" = r."roleId"
-            WHERE updater."userId" = auth.uid()
-            AND updater."accountId" = "UserProfiles"."accountId"
-            AND r."roleCategory" = 'admin'
-        )
-    )
-);
-
--- Create DELETE policy - Only admins can delete profiles in their account
-CREATE POLICY "Only admins can delete profiles in their account"
-ON "UserProfiles" FOR DELETE
-TO authenticated
-USING (
-    EXISTS (
-        SELECT 1 FROM "UserProfiles" deleter
-        JOIN "Roles" r ON deleter."roleId" = r."roleId"
-        WHERE deleter."userId" = auth.uid()
-        AND deleter."accountId" = "UserProfiles"."accountId"
-        AND r."roleCategory" = 'admin'
-    )
-);
 
 -- Create indexes for UserProfiles
 CREATE INDEX idxUserEmail ON "UserProfiles"("userId");
@@ -240,6 +143,158 @@ CREATE INDEX idxUserOrg ON "UserProfiles"("organizationId");
 CREATE INDEX idxUserAccount ON "UserProfiles"("accountId");
 
 -- Now we can create all the policies that reference UserProfiles
+
+-- Roles policies
+CREATE POLICY "Users can view system and account roles"
+ON "Roles" FOR SELECT
+TO authenticated
+USING (
+    "accountId" IS NULL OR
+    EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" up 
+        WHERE up."userId" = auth.uid()
+        AND up."accountId" = "Roles"."accountId"
+    )
+);
+
+-- Create INSERT policy for Roles - only admins can create roles in their account
+CREATE POLICY "Only admins can create roles in their account"
+ON "Roles" FOR INSERT
+TO authenticated
+WITH CHECK (
+    EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" up
+        JOIN "Roles" r ON up."roleId" = r."roleId"
+        WHERE up."userId" = auth.uid()
+        AND up."accountId" = "Roles"."accountId"
+        AND r."roleCategory" IN ('admin', 'owner')
+    )
+);
+
+-- Create UPDATE policy for Roles - only admins can modify roles in their account
+CREATE POLICY "Only admins can modify roles in their account"
+ON "Roles" FOR UPDATE
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" up
+        JOIN "Roles" r ON up."roleId" = r."roleId"
+        WHERE up."userId" = auth.uid()
+        AND up."accountId" = "Roles"."accountId"
+        AND r."roleCategory" IN ('admin', 'owner')
+    )
+)
+WITH CHECK (
+    EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" up
+        JOIN "Roles" r ON up."roleId" = r."roleId"
+        WHERE up."userId" = auth.uid()
+        AND up."accountId" = "Roles"."accountId"
+        AND r."roleCategory" IN ('admin', 'owner')
+    )
+);
+
+-- Create DELETE policy for Roles - only admins can delete roles in their account
+CREATE POLICY "Only admins can delete roles in their account"
+ON "Roles" FOR DELETE
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" up
+        JOIN "Roles" r ON up."roleId" = r."roleId"
+        WHERE up."userId" = auth.uid()
+        AND up."accountId" = "Roles"."accountId"
+        AND r."roleCategory" IN ('admin', 'owner')
+    )
+);
+
+-- Groups policies
+CREATE POLICY "Users can view groups in their account"
+ON "Groups" FOR SELECT
+TO authenticated
+USING (
+    "accountId" = (
+        SELECT "accountId" 
+        FROM "UserProfiles" 
+        WHERE "userId" = auth.uid()
+    )
+);
+
+-- Organizations policies
+CREATE POLICY "Users can view organizations in their account"
+ON "Organizations" FOR SELECT
+TO authenticated
+USING (
+    "accountId" = (
+        SELECT "accountId" 
+        FROM "UserProfiles" 
+        WHERE "userId" = auth.uid()
+    )
+);
+
+-- Drop existing Accounts policies if they exist
+DROP POLICY IF EXISTS "Users can view their own account" ON "Accounts";
+
+-- Create new public read policy for Accounts
+CREATE POLICY "Public can view basic account info"
+ON "Accounts" FOR SELECT
+TO authenticated, anon
+USING (
+    -- Allow access to all fields except planId
+    true
+);
+
+-- Create policy to protect planId
+CREATE POLICY "Only account members can view sensitive info"
+ON "Accounts" FOR SELECT
+TO authenticated
+USING (
+    "accountId" = (
+        SELECT "accountId" 
+        FROM "UserProfiles" 
+        WHERE "userId" = auth.uid()
+    )
+);
+
+-- Modify the Accounts table to implement column-level security
+ALTER TABLE "Accounts" ENABLE ROW LEVEL SECURITY;
+
+-- Revoke and grant column-level permissions
+REVOKE SELECT ON "Accounts" FROM anon, authenticated;
+GRANT SELECT ("accountId", "name", "subdomain", "endUserAccountCreationType", "favicon") ON "Accounts" TO anon, authenticated;
+GRANT SELECT ("planId") ON "Accounts" TO authenticated;
+
+-- Drop existing UserProfiles policies if they exist
+DROP POLICY IF EXISTS "Users can view their own profile" ON "UserProfiles";
+DROP POLICY IF EXISTS "Staff can view profiles in their account" ON "UserProfiles";
+DROP POLICY IF EXISTS "Users can view profiles in their account" ON "UserProfiles";
+
+-- Create UserProfiles policies
+CREATE POLICY "Users can view profiles"
+ON "UserProfiles" FOR SELECT
+TO authenticated
+USING (true);  -- Allow authenticated users to view all profiles, filtering will be done at the application level
+
+CREATE POLICY "Users can update their own profile"
+ON "UserProfiles" FOR UPDATE
+TO authenticated
+USING ("userId" = auth.uid())
+WITH CHECK ("userId" = auth.uid());
+
+CREATE POLICY "Users can delete their own profile"
+ON "UserProfiles" FOR DELETE
+TO authenticated
+USING ("userId" = auth.uid());
+
+CREATE POLICY "Users can insert their own profile"
+ON "UserProfiles" FOR INSERT
+TO authenticated
+WITH CHECK ("userId" = auth.uid());
 
 -- Create Products Table
 CREATE TABLE "Products" (
@@ -251,7 +306,13 @@ CREATE TABLE "Products" (
 );
 
 -- Enable RLS for Products
--- ALTER TABLE "Products" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Products" ENABLE ROW LEVEL SECURITY;
+
+-- Create read-only policy for Products
+CREATE POLICY "Products are viewable by everyone" 
+ON "Products" FOR SELECT 
+TO authenticated, anon
+USING (true);
 
 -- Create Features Table
 CREATE TABLE "Features" (
@@ -264,6 +325,13 @@ CREATE TABLE "Features" (
 );
 
 -- Enable RLS for Features
+ALTER TABLE "Features" ENABLE ROW LEVEL SECURITY;
+
+-- Create read-only policy for Features
+CREATE POLICY "Features are viewable by everyone" 
+ON "Features" FOR SELECT 
+TO authenticated, anon
+USING (true);
 
 -- Create Plan_Features Join Table
 CREATE TABLE "PlanFeatures" (
@@ -274,8 +342,13 @@ CREATE TABLE "PlanFeatures" (
 );
 
 -- Enable RLS for PlanFeatures
--- ALTER TABLE "PlanFeatures" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "PlanFeatures" ENABLE ROW LEVEL SECURITY;
 
+-- Create read-only policy for PlanFeatures
+CREATE POLICY "PlanFeatures are viewable by everyone" 
+ON "PlanFeatures" FOR SELECT 
+TO authenticated, anon
+USING (true);
 
 CREATE INDEX idxFeatureId ON "PlanFeatures"("featureId");
 
@@ -292,10 +365,10 @@ CREATE TABLE "AddOns" (
 -- Enable RLS for AddOns
 ALTER TABLE "AddOns" ENABLE ROW LEVEL SECURITY;
 
--- Create READ policy for AddOns - anyone can read
-CREATE POLICY "Anyone can read add-ons"
-ON "AddOns" FOR SELECT
-TO public
+-- Create read-only policy for AddOns
+CREATE POLICY "AddOns are viewable by everyone" 
+ON "AddOns" FOR SELECT 
+TO authenticated, anon
 USING (true);
 
 -- Create AccountAddOns Junction Table
@@ -307,7 +380,7 @@ CREATE TABLE "AccountAddOns" (
 );
 
 -- Enable RLS for AccountAddOns
--- ALTER TABLE "AccountAddOns" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "AccountAddOns" ENABLE ROW LEVEL SECURITY;
 
 -- Create index for optimization
 CREATE INDEX idx_account_addons_addon ON "AccountAddOns"("addOnId");
@@ -344,12 +417,73 @@ CREATE TABLE "BrandAgents" (
     PRIMARY KEY ("brandId", "userId")
 );
 
+-- Enable RLS for Brands
+ALTER TABLE "Brands" ENABLE ROW LEVEL SECURITY;
+
+-- Create WRITE policy for Brands - only admins can modify brands
+CREATE POLICY "Only admins can modify brands"
+ON "Brands" USING (
+    EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND (r."roleCategory" = 'admin' OR r."roleCategory" = 'owner')
+    )
+);
+
+-- Enable RLS for BrandAgents
+ALTER TABLE "BrandAgents" ENABLE ROW LEVEL SECURITY;
+
+-- Create WRITE policy for BrandAgents - only admins can modify brand memberships
+CREATE POLICY "Only admins can modify brand memberships"
+ON "BrandAgents" USING (
+    EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND (r."roleCategory" = 'admin' OR r."roleCategory" = 'owner')
+    )
+);
 
 -- Create GroupOrganizationMapping Table
 CREATE TABLE "GroupOrganizationMapping" (
     "groupId" UUID REFERENCES "Groups"("groupId") ON DELETE CASCADE,
     "organizationId" UUID REFERENCES "Organizations"("organizationId") ON DELETE CASCADE,
     PRIMARY KEY ("groupId", "organizationId")
+);
+
+-- Enable RLS for GroupOrganizationMapping
+ALTER TABLE "GroupOrganizationMapping" ENABLE ROW LEVEL SECURITY;
+
+-- Create READ policy for GroupOrganizationMapping
+CREATE POLICY "Users can view group-org mappings in their account"
+ON "GroupOrganizationMapping" FOR SELECT
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 
+        FROM "Organizations" o
+        WHERE o."organizationId" = "GroupOrganizationMapping"."organizationId"
+        AND o."accountId" = (
+            SELECT "accountId" 
+            FROM "UserProfiles" 
+            WHERE "userId" = auth.uid()
+        )
+    )
+);
+
+-- Create WRITE policy for GroupOrganizationMapping - only admins can modify
+CREATE POLICY "Only admins can modify group-org mappings"
+ON "GroupOrganizationMapping" USING (
+    EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND (r."roleCategory" = 'admin' OR r."roleCategory" = 'owner')
+    )
 );
 
 -- Create indexes for optimization
@@ -369,6 +503,27 @@ CREATE TABLE "Permissions" (
     "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Enable RLS for Permissions
+ALTER TABLE "Permissions" ENABLE ROW LEVEL SECURITY;
+
+-- Create READ policy for Permissions
+CREATE POLICY "Permissions are viewable by authenticated users"
+ON "Permissions" FOR SELECT
+TO authenticated
+USING (true);
+
+-- Create WRITE policy for Permissions - only admins can modify
+CREATE POLICY "Only admins can modify permissions"
+ON "Permissions" USING (
+    EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND (r."roleCategory" = 'admin' OR r."roleCategory" = 'owner')
+    )
+);
+
 -- Create RolePermissions Join Table
 CREATE TABLE "RolePermissions" (
     "roleId" UUID REFERENCES "Roles"("roleId") ON DELETE CASCADE,
@@ -376,6 +531,26 @@ CREATE TABLE "RolePermissions" (
     PRIMARY KEY ("roleId", "permissionId")
 );
 
+-- Enable RLS for RolePermissions
+ALTER TABLE "RolePermissions" ENABLE ROW LEVEL SECURITY;
+
+-- Create READ policy for RolePermissions
+CREATE POLICY "RolePermissions are viewable by authenticated users"
+ON "RolePermissions" FOR SELECT
+TO authenticated
+USING (true);
+
+-- Create WRITE policy for RolePermissions - only admins can modify
+CREATE POLICY "Only admins can modify role permissions"
+ON "RolePermissions" USING (
+    EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND (r."roleCategory" = 'admin' OR r."roleCategory" = 'owner')
+    )
+);
 
 -- Create domain validation function
 CREATE OR REPLACE FUNCTION validate_domains(domains TEXT[])
@@ -398,6 +573,25 @@ CREATE TABLE "OrganizationDomains" (
     PRIMARY KEY ("organizationId", "domain")
 );
 
+-- Enable RLS for OrganizationDomains
+ALTER TABLE "OrganizationDomains" ENABLE ROW LEVEL SECURITY;
+
+-- Create READ policy for OrganizationDomains
+CREATE POLICY "Users can view domains in their account"
+ON "OrganizationDomains" FOR SELECT
+TO authenticated
+USING (
+    "organizationId" IN (
+        SELECT "organizationId" 
+        FROM "Organizations" 
+        WHERE "accountId" = (
+            SELECT "accountId" 
+            FROM "UserProfiles" 
+            WHERE "userId" = auth.uid()
+        )
+    )
+);
+
 -- Create OrganizationTags Table
 CREATE TABLE "OrganizationTags" (
     "organizationId" UUID REFERENCES "Organizations"("organizationId") ON DELETE CASCADE,
@@ -406,23 +600,42 @@ CREATE TABLE "OrganizationTags" (
     PRIMARY KEY ("organizationId", "tag")
 );
 
+-- Enable RLS for OrganizationTags
+ALTER TABLE "OrganizationTags" ENABLE ROW LEVEL SECURITY;
+
+-- Create READ policy for OrganizationTags
+CREATE POLICY "Users can view tags in their account"
+ON "OrganizationTags" FOR SELECT
+TO authenticated
+USING (
+    "organizationId" IN (
+        SELECT "organizationId" 
+        FROM "Organizations" 
+        WHERE "accountId" = (
+            SELECT "accountId" 
+            FROM "UserProfiles" 
+            WHERE "userId" = auth.uid()
+        )
+    )
+);
+
 -- Create indexes for optimization
 CREATE INDEX idx_org_domains ON "OrganizationDomains"("domain");
 CREATE INDEX idx_org_tags ON "OrganizationTags"("tag");
 
 -- Create READ policy for AccountAddOns - users can only read add-ons for their account
--- CREATE POLICY "Users can view add-ons for their account"
--- ON "AccountAddOns" FOR SELECT
--- TO authenticated
--- USING (
---     "accountId" = (
---         SELECT "accountId" 
---         FROM "UserProfiles" 
---         WHERE "userId" = auth.uid()
---     )
--- );
+CREATE POLICY "Users can view add-ons for their account"
+ON "AccountAddOns" FOR SELECT
+TO authenticated
+USING (
+    "accountId" = (
+        SELECT "accountId" 
+        FROM "UserProfiles" 
+        WHERE "userId" = auth.uid()
+    )
+);
 
--- -- Create UserGroups Join Table for handling multiple group assignments
+-- Create UserGroups Join Table for handling multiple group assignments
 CREATE TABLE "UserGroups" (
     "userId" UUID REFERENCES "UserProfiles"("userId") ON DELETE CASCADE,
     "groupId" UUID REFERENCES "Groups"("groupId") ON DELETE CASCADE,
@@ -431,6 +644,61 @@ CREATE TABLE "UserGroups" (
     "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY ("userId", "groupId")
 );
+
+-- Enable RLS for UserGroups
+ALTER TABLE "UserGroups" ENABLE ROW LEVEL SECURITY;
+
+-- Create READ policy for UserGroups
+CREATE POLICY "Users can view user-group mappings in their account"
+ON "UserGroups" FOR SELECT
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 
+        FROM "Groups" g
+        WHERE g."groupId" = "UserGroups"."groupId"
+        AND g."accountId" = (
+            SELECT "accountId" 
+            FROM "UserProfiles" 
+            WHERE "userId" = auth.uid()
+        )
+    )
+);
+
+-- Create WRITE policy for UserGroups - only admins can modify
+CREATE POLICY "Only admins can modify user-group mappings"
+ON "UserGroups" USING (
+    EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND (r."roleCategory" = 'admin' OR r."roleCategory" = 'owner')
+    )
+);
+
+-- Create function to ensure only one default group per account
+CREATE OR REPLACE FUNCTION check_default_group()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW."isDefault" THEN
+        -- Set "isDefault" to false for all other groups in the same account
+        UPDATE "Groups" 
+        SET "isDefault" = FALSE 
+        WHERE "accountId" = NEW."accountId" 
+        AND "groupId" != NEW."groupId" 
+        AND "isDefault" = TRUE;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create trigger for default group constraint
+CREATE TRIGGER ensure_single_default_group
+    BEFORE INSERT OR UPDATE ON "Groups"
+    FOR EACH ROW
+    WHEN (NEW."isDefault" = TRUE)
+    EXECUTE FUNCTION check_default_group();
 
 -- Create function to prevent circular organization-group mappings
 CREATE OR REPLACE FUNCTION check_circular_org_group_mapping()
@@ -545,6 +813,74 @@ CREATE TABLE "TicketCustomFieldValues" (
 CREATE INDEX idx_custom_fields_account ON "CustomFields"("accountId");
 CREATE INDEX idx_custom_field_values_field ON "TicketCustomFieldValues"("fieldId");
 
+-- Enable RLS for custom fields tables
+ALTER TABLE "CustomFields" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "TicketCustomFieldValues" ENABLE ROW LEVEL SECURITY;
+
+-- Create READ policies for custom fields
+CREATE POLICY "Users can view custom fields in their account"
+ON "CustomFields" FOR SELECT
+TO authenticated
+USING (
+    "accountId" = (
+        SELECT "accountId" 
+        FROM "UserProfiles" 
+        WHERE "userId" = auth.uid()
+    )
+);
+
+CREATE POLICY "Users can view custom field values for accessible tickets"
+ON "TicketCustomFieldValues" FOR SELECT
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM "Tickets" t
+        WHERE t."ticketId" = "TicketCustomFieldValues"."ticketId"
+        AND t."accountId" = (
+            SELECT "accountId" 
+            FROM "UserProfiles" 
+            WHERE "userId" = auth.uid()
+        )
+    )
+);
+
+-- Create WRITE policies for custom fields - only admins can modify field definitions
+CREATE POLICY "Only admins can modify custom fields"
+ON "CustomFields" USING (
+    EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND (r."roleCategory" = 'admin' OR r."roleCategory" = 'owner')
+    )
+);
+
+-- Agents can modify custom field values for tickets they have access to
+CREATE POLICY "Agents can modify custom field values for accessible tickets"
+ON "TicketCustomFieldValues" USING (
+    EXISTS (
+        SELECT 1 
+        FROM "Tickets" t
+        JOIN "UserProfiles" u ON u."userId" = auth.uid()
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE t."ticketId" = "TicketCustomFieldValues"."ticketId"
+        AND (
+            r."canManageAllTickets" = true
+            OR (
+                r."roleCategory" IN ('agent', 'admin', 'owner')
+                AND (
+                    t."assigneeId" = auth.uid()
+                    OR t."assigneeGroupId" IN (
+                        SELECT "groupId" 
+                        FROM "UserGroups" 
+                        WHERE "userId" = auth.uid()
+                    )
+                )
+            )
+        )
+    )
+);
 
 -- Create Comments Table
 CREATE TABLE "TicketComments" (
@@ -594,6 +930,89 @@ CREATE INDEX idx_attachments_account ON "Attachments"("accountId");
 CREATE INDEX idx_attachments_uploaded_by ON "Attachments"("uploadedById");
 CREATE INDEX idx_ticket_attachments_ticket ON "TicketAttachments"("ticketId");
 CREATE INDEX idx_comment_attachments_comment ON "CommentAttachments"("commentId");
+
+-- Enable RLS for attachment tables
+ALTER TABLE "Attachments" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "TicketAttachments" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "CommentAttachments" ENABLE ROW LEVEL SECURITY;
+
+-- Create READ policies for attachments
+CREATE POLICY "Users can view public attachments in their account"
+ON "Attachments" FOR SELECT
+TO authenticated
+USING (
+    ("isPublic" = true AND "accountId" = (
+        SELECT "accountId" 
+        FROM "UserProfiles" 
+        WHERE "userId" = auth.uid()
+    ))
+    OR "uploadedById" = auth.uid()
+    OR EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND r."roleCategory" IN ('agent', 'admin', 'owner')
+    )
+);
+
+-- Create WRITE policies for attachments
+CREATE POLICY "Users can upload attachments to their tickets"
+ON "Attachments" FOR INSERT
+TO authenticated
+WITH CHECK (
+    "accountId" = (
+        SELECT "accountId" 
+        FROM "UserProfiles" 
+        WHERE "userId" = auth.uid()
+    )
+);
+
+CREATE POLICY "Only uploaders and admins can modify attachments"
+ON "Attachments" FOR UPDATE
+TO authenticated
+USING (
+    "uploadedById" = auth.uid()
+    OR EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND (r."roleCategory" = 'admin' OR r."roleCategory" = 'owner')
+    )
+);
+
+-- Create READ policies for attachment junctions
+CREATE POLICY "Users can view ticket attachments they have access to"
+ON "TicketAttachments" FOR SELECT
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM "Tickets" t
+        WHERE t."ticketId" = "TicketAttachments"."ticketId"
+        AND t."accountId" = (
+            SELECT "accountId" 
+            FROM "UserProfiles" 
+            WHERE "userId" = auth.uid()
+        )
+    )
+);
+
+CREATE POLICY "Users can view comment attachments they have access to"
+ON "CommentAttachments" FOR SELECT
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM "TicketComments" tc
+        JOIN "Tickets" t ON t."ticketId" = tc."ticketId"
+        WHERE tc."commentId" = "CommentAttachments"."commentId"
+        AND t."accountId" = (
+            SELECT "accountId" 
+            FROM "UserProfiles" 
+            WHERE "userId" = auth.uid()
+        )
+    )
+);
 
 -- Create TicketFollowers Junction Table
 CREATE TABLE "TicketFollowers" (
@@ -645,6 +1064,95 @@ ALTER TABLE "TicketCCs" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "TicketTags" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "TicketSharing" ENABLE ROW LEVEL SECURITY;
 
+-- Create READ policies
+CREATE POLICY "Users can view tickets in their account"
+ON "Tickets" FOR SELECT
+TO authenticated, anon
+USING (
+    "accountId" = (
+        SELECT "accountId" 
+        FROM "UserProfiles" 
+        WHERE "userId" = auth.uid()
+    )
+    OR 
+    EXISTS (
+        SELECT 1 FROM "TicketCCs" 
+        WHERE "ticketId" = "Tickets"."ticketId" 
+        AND "userId" = auth.uid()
+    )
+    OR
+    EXISTS (
+        SELECT 1 FROM "TicketFollowers"
+        WHERE "ticketId" = "Tickets"."ticketId" 
+        AND "userId" = auth.uid()
+    )
+);
+
+-- Create INSERT policy for anonymous ticket creation
+CREATE POLICY "Anyone can create tickets for submit_ticket accounts"
+ON "Tickets" FOR INSERT
+TO authenticated, anon
+WITH CHECK (
+    EXISTS (
+        SELECT 1 FROM "Accounts"
+        WHERE "Accounts"."accountId" = "Tickets"."accountId"
+        AND "Accounts"."endUserAccountCreationType" = 'submit_ticket'
+    )
+);
+
+-- Create UPDATE policy for agents
+CREATE POLICY "Agents can modify tickets they have access to"
+ON "Tickets" FOR UPDATE
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND (
+            r."canManageAllTickets" = true
+            OR (
+                r."roleCategory" IN ('agent', 'admin', 'owner')
+                AND (
+                    "Tickets"."assigneeId" = auth.uid()
+                    OR "Tickets"."assigneeGroupId" IN (
+                        SELECT "groupId" 
+                        FROM "UserGroups" 
+                        WHERE "userId" = auth.uid()
+                    )
+                )
+            )
+        )
+    )
+);
+
+-- Create DELETE policy for agents
+CREATE POLICY "Agents can delete tickets they have access to"
+ON "Tickets" FOR DELETE
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND (
+            r."canManageAllTickets" = true
+            OR (
+                r."roleCategory" IN ('agent', 'admin', 'owner')
+                AND (
+                    "Tickets"."assigneeId" = auth.uid()
+                    OR "Tickets"."assigneeGroupId" IN (
+                        SELECT "groupId" 
+                        FROM "UserGroups" 
+                        WHERE "userId" = auth.uid()
+                    )
+                )
+            )
+        )
+    )
+);
 
 -- Function to update ticket timestamps
 CREATE OR REPLACE FUNCTION update_ticket_timestamps()
@@ -693,6 +1201,59 @@ CREATE TABLE "CommentReadStatus" (
 CREATE INDEX idx_ticket_read_status_user ON "TicketReadStatus"("userId");
 CREATE INDEX idx_comment_read_status_user ON "CommentReadStatus"("userId");
 
+-- Enable RLS for read status tables
+ALTER TABLE "TicketReadStatus" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "CommentReadStatus" ENABLE ROW LEVEL SECURITY;
+
+-- Create READ policies for read status tables
+CREATE POLICY "Users can view their own read status"
+ON "TicketReadStatus" FOR SELECT
+TO authenticated
+USING (
+    "userId" = auth.uid()
+    OR EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND r."canManageAllTickets" = true
+    )
+);
+
+CREATE POLICY "Users can view their own comment read status"
+ON "CommentReadStatus" FOR SELECT
+TO authenticated
+USING (
+    "userId" = auth.uid()
+    OR EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND r."canManageAllTickets" = true
+    )
+);
+
+-- -- Create WRITE policies for read status tables
+-- CREATE POLICY "Users can update their own read status"
+-- ON "TicketReadStatus" FOR INSERT
+-- TO authenticated
+-- USING ("userId" = auth.uid());
+
+-- CREATE POLICY "Users can update their own read status"
+-- ON "TicketReadStatus" FOR UPDATE
+-- TO authenticated
+-- USING ("userId" = auth.uid());
+
+-- CREATE POLICY "Users can update their own comment read status"
+-- ON "CommentReadStatus" FOR INSERT
+-- TO authenticated
+-- USING ("userId" = auth.uid());
+
+-- CREATE POLICY "Users can update their own comment read status"
+-- ON "CommentReadStatus" FOR UPDATE
+-- TO authenticated
+-- USING ("userId" = auth.uid());
 
 -- Create Channel Type ENUM
 CREATE TYPE channel_type AS ENUM (
@@ -780,6 +1341,81 @@ CREATE INDEX idx_channels_account ON "Channels"("accountId");
 CREATE INDEX idx_channels_brand ON "Channels"("brandId");
 CREATE INDEX idx_tickets_channel ON "Tickets"("channelId");
 
+-- Enable RLS for channel tables
+ALTER TABLE "Channels" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "ChannelInbox" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "ChannelVoice" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "ChannelMessaging" ENABLE ROW LEVEL SECURITY;
+
+-- Create READ policies
+CREATE POLICY "Users can view channels in their account"
+ON "Channels" FOR SELECT
+TO authenticated
+USING (
+    "accountId" = (
+        SELECT "accountId" 
+        FROM "UserProfiles" 
+        WHERE "userId" = auth.uid()
+    )
+);
+
+-- Create WRITE policies - only admins can modify channels
+CREATE POLICY "Only admins can modify channels"
+ON "Channels" USING (
+    EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND (r."roleCategory" = 'admin' OR r."roleCategory" = 'owner')
+    )
+);
+
+-- Similar RLS policies for channel type tables
+CREATE POLICY "Users can view channel inboxes in their account"
+ON "ChannelInbox" FOR SELECT
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM "Channels" c
+        WHERE c."channelId" = "ChannelInbox"."channelId"
+        AND c."accountId" = (
+            SELECT "accountId" 
+            FROM "UserProfiles" 
+            WHERE "userId" = auth.uid()
+        )
+    )
+);
+
+CREATE POLICY "Users can view channel voice in their account"
+ON "ChannelVoice" FOR SELECT
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM "Channels" c
+        WHERE c."channelId" = "ChannelVoice"."channelId"
+        AND c."accountId" = (
+            SELECT "accountId" 
+            FROM "UserProfiles" 
+            WHERE "userId" = auth.uid()
+        )
+    )
+);
+
+CREATE POLICY "Users can view channel messaging in their account"
+ON "ChannelMessaging" FOR SELECT
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM "Channels" c
+        WHERE c."channelId" = "ChannelMessaging"."channelId"
+        AND c."accountId" = (
+            SELECT "accountId" 
+            FROM "UserProfiles" 
+            WHERE "userId" = auth.uid()
+        )
+    )
+);
 
 -- Create UserTags Junction Table
 CREATE TABLE "UserTags" (
@@ -807,6 +1443,87 @@ CREATE INDEX idx_user_tags ON "UserTags"("tag");
 CREATE INDEX idx_auto_tag_rules_account ON "AutomaticTagRules"("accountId");
 CREATE INDEX idx_auto_tag_rules_keyword ON "AutomaticTagRules"("keyword");
 
+-- Enable RLS for tag tables
+ALTER TABLE "UserTags" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "OrganizationTags" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "AutomaticTagRules" ENABLE ROW LEVEL SECURITY;
+
+-- Create READ policies for tag tables
+CREATE POLICY "Users can view tags in their account"
+ON "UserTags" FOR SELECT
+TO authenticated
+USING (
+    "userId" IN (
+        SELECT "userId" 
+        FROM "UserProfiles" 
+        WHERE "accountId" = (
+            SELECT "accountId" 
+            FROM "UserProfiles" 
+            WHERE "userId" = auth.uid()
+        )
+    )
+);
+
+CREATE POLICY "Users can view organization tags in their account"
+ON "OrganizationTags" FOR SELECT
+TO authenticated
+USING (
+    "organizationId" IN (
+        SELECT "organizationId" 
+        FROM "Organizations" 
+        WHERE "accountId" = (
+            SELECT "accountId" 
+            FROM "UserProfiles" 
+            WHERE "userId" = auth.uid()
+        )
+    )
+);
+
+CREATE POLICY "Users can view automatic tag rules in their account"
+ON "AutomaticTagRules" FOR SELECT
+TO authenticated
+USING (
+    "accountId" = (
+        SELECT "accountId" 
+        FROM "UserProfiles" 
+        WHERE "userId" = auth.uid()
+    )
+);
+
+-- Create WRITE policies for tag tables - only admins can modify
+CREATE POLICY "Only admins can modify tags"
+ON "UserTags" USING (
+    EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND (r."roleCategory" = 'admin' OR r."roleCategory" = 'owner')
+    )
+);
+
+CREATE POLICY "Only admins can modify organization tags"
+ON "OrganizationTags" USING (
+    EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND (r."roleCategory" = 'admin' OR r."roleCategory" = 'owner')
+    )
+);
+
+CREATE POLICY "Only admins can modify automatic tag rules"
+ON "AutomaticTagRules" USING (
+    EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND (r."roleCategory" = 'admin' OR r."roleCategory" = 'owner')
+    )
+);
+
 -- Create function to automatically propagate user and organization tags to tickets
 CREATE OR REPLACE FUNCTION propagate_tags_to_ticket()
 RETURNS TRIGGER AS $$
@@ -832,10 +1549,10 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- -- Create trigger to propagate tags when ticket is created
-CREATE TRIGGER propagate_tags_on_ticket_creation
-    AFTER INSERT ON "Tickets"
-    FOR EACH ROW
-    EXECUTE FUNCTION propagate_tags_to_ticket();
+-- CREATE TRIGGER propagate_tags_on_ticket_creation
+--     AFTER INSERT ON "Tickets"
+--     FOR EACH ROW
+--     EXECUTE FUNCTION propagate_tags_to_ticket();
 
 -- Create function to apply automatic tag rules
 CREATE OR REPLACE FUNCTION apply_automatic_tag_rules()
@@ -927,6 +1644,101 @@ CREATE INDEX idx_macros_category ON "Macros"("categoryId");
 CREATE INDEX idx_macro_actions_macro ON "MacroActions"("macroId");
 CREATE INDEX idx_macro_usage_user_date ON "MacroUsageStats"("userId", "weekStartDate");
 
+-- Enable RLS for macro-related tables
+ALTER TABLE "MacroCategories" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Macros" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "MacroActions" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "MacroUsageStats" ENABLE ROW LEVEL SECURITY;
+
+-- Create READ policies
+CREATE POLICY "Users can view macro categories in their account"
+ON "MacroCategories" FOR SELECT
+TO authenticated
+USING (
+    "accountId" = (
+        SELECT "accountId" 
+        FROM "UserProfiles" 
+        WHERE "userId" = auth.uid()
+    )
+);
+
+CREATE POLICY "Users can view macros in their account"
+ON "Macros" FOR SELECT
+TO authenticated
+USING (
+    "accountId" = (
+        SELECT "accountId" 
+        FROM "UserProfiles" 
+        WHERE "userId" = auth.uid()
+    )
+    OR (
+        "isPersonal" = true 
+        AND "createdById" = auth.uid()
+    )
+);
+
+CREATE POLICY "Users can view macro actions in their account"
+ON "MacroActions" FOR SELECT
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM "Macros" m
+        WHERE m."macroId" = "MacroActions"."macroId"
+        AND (
+            m."accountId" = (
+                SELECT "accountId" 
+                FROM "UserProfiles" 
+                WHERE "userId" = auth.uid()
+            )
+            OR (
+                m."isPersonal" = true 
+                AND m."createdById" = auth.uid()
+            )
+        )
+    )
+);
+
+-- Create WRITE policies
+CREATE POLICY "Only admins can modify macro categories"
+ON "MacroCategories" USING (
+    EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND (r."roleCategory" = 'admin' OR r."roleCategory" = 'owner')
+    )
+);
+
+CREATE POLICY "Users can manage their personal macros"
+ON "Macros" USING (
+    ("isPersonal" = true AND "createdById" = auth.uid())
+    OR EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND (r."roleCategory" = 'admin' OR r."roleCategory" = 'owner')
+    )
+);
+
+CREATE POLICY "Users can manage their personal macro actions"
+ON "MacroActions" USING (
+    EXISTS (
+        SELECT 1 FROM "Macros" m
+        WHERE m."macroId" = "MacroActions"."macroId"
+        AND (
+            (m."isPersonal" = true AND m."createdById" = auth.uid())
+            OR EXISTS (
+                SELECT 1 
+                FROM "UserProfiles" u
+                JOIN "Roles" r ON u."roleId" = r."roleId"
+                WHERE u."userId" = auth.uid()
+                AND (r."roleCategory" = 'admin' OR r."roleCategory" = 'owner')
+            )
+        )
+    )
+);
 
 -- Function to update macro usage statistics
 CREATE OR REPLACE FUNCTION update_macro_usage()
@@ -966,6 +1778,25 @@ CREATE TABLE "MacroTicketEvents" (
 
 -- Create index for ticket events
 CREATE INDEX idx_macro_ticket_events ON "MacroTicketEvents"("ticketId", "appliedAt");
+
+-- Enable RLS for macro ticket events
+ALTER TABLE "MacroTicketEvents" ENABLE ROW LEVEL SECURITY;
+
+-- Create READ policy for macro ticket events
+CREATE POLICY "Users can view macro events for accessible tickets"
+ON "MacroTicketEvents" FOR SELECT
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM "Tickets" t
+        WHERE t."ticketId" = "MacroTicketEvents"."ticketId"
+        AND t."accountId" = (
+            SELECT "accountId" 
+            FROM "UserProfiles" 
+            WHERE "userId" = auth.uid()
+        )
+    )
+);
 
 CREATE UNIQUE INDEX one_default_per_account 
 ON "Brands"("accountId", "isDefault")
@@ -1023,6 +1854,35 @@ CREATE TRIGGER manage_default_brand
     FOR EACH ROW
     EXECUTE FUNCTION ensure_default_brand();
 
+-- Create READ policy for BrandAgents
+CREATE POLICY "Users can view brand memberships in their account"
+ON "BrandAgents" FOR SELECT
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 
+        FROM "Brands" b
+        WHERE b."brandId" = "BrandAgents"."brandId"
+        AND b."accountId" = (
+            SELECT "accountId" 
+            FROM "UserProfiles" 
+            WHERE "userId" = auth.uid()
+        )
+    )
+);
+
+-- Create READ policy for Brands
+CREATE POLICY "Users can view brands in their account"
+ON "Brands" FOR SELECT
+TO authenticated
+USING (
+    "accountId" = (
+        SELECT "accountId" 
+        FROM "UserProfiles" 
+        WHERE "userId" = auth.uid()
+    )
+);
+
 -- Create function to sync email from auth.users to UserProfiles
 CREATE OR REPLACE FUNCTION sync_user_email()
 RETURNS TRIGGER AS $$
@@ -1079,6 +1939,110 @@ CREATE INDEX idx_audit_logs_account ON "AuditLogs"("accountId");
 CREATE INDEX idx_audit_logs_entity ON "AuditLogs"("entityType", "entityId");
 CREATE INDEX idx_audit_logs_actor ON "AuditLogs"("actorId");
 CREATE INDEX idx_audit_logs_performed_at ON "AuditLogs"("performedAt");
+
+-- Enable RLS for audit logs
+ALTER TABLE "AuditLogs" ENABLE ROW LEVEL SECURITY;
+
+-- Create READ policy for audit logs - only staff can view
+CREATE POLICY "Staff can view audit logs in their account"
+ON "AuditLogs" FOR SELECT
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND r."roleCategory" IN ('agent', 'admin', 'owner')
+        AND u."accountId" = "AuditLogs"."accountId"
+    )
+);
+
+-- -- Function to record ticket changes
+-- CREATE OR REPLACE FUNCTION audit_ticket_changes()
+-- RETURNS TRIGGER AS $$
+-- DECLARE
+--     changes_json JSONB := '{}'::JSONB;
+--     field_name TEXT;
+--     old_row JSONB := CASE WHEN TG_OP = 'DELETE' THEN row_to_json(OLD)::JSONB ELSE '{}'::JSONB END;
+--     new_row JSONB := CASE WHEN TG_OP = 'INSERT' THEN row_to_json(NEW)::JSONB 
+--                           WHEN TG_OP = 'UPDATE' THEN row_to_json(NEW)::JSONB
+--                           ELSE '{}'::JSONB END;
+-- BEGIN
+--     -- For updates, compare old and new values
+--     IF TG_OP = 'UPDATE' THEN
+--         FOR field_name IN (SELECT DISTINCT key FROM jsonb_object_keys(old_row) UNION SELECT DISTINCT key FROM jsonb_object_keys(new_row))
+--         LOOP
+--             IF old_row ->> field_name IS DISTINCT FROM new_row ->> field_name THEN
+--                 changes_json := changes_json || jsonb_build_object(
+--                     field_name,
+--                     jsonb_build_object(
+--                         'old', old_row ->> field_name,
+--                         'new', new_row ->> field_name
+--                     )
+--                 );
+--             END IF;
+--         END LOOP;
+--     -- For inserts and deletes, include all fields
+--     ELSE
+--         changes_json := jsonb_build_object(
+--             'data',
+--             CASE 
+--                 WHEN TG_OP = 'INSERT' THEN new_row
+--                 WHEN TG_OP = 'DELETE' THEN old_row
+--                 ELSE '{}'::JSONB
+--             END
+--         );
+--     END IF;
+
+--     -- Record the audit log
+--     INSERT INTO "AuditLogs" (
+--         "accountId",
+--         "entityType",
+--         "entityId",
+--         "action",
+--         "actorId",
+--         "changes",
+--         "metadata",
+--         "ipAddress",
+--         "userAgent"
+--     ) VALUES (
+--         CASE TG_OP
+--             WHEN 'DELETE' THEN OLD."accountId"
+--             ELSE NEW."accountId"
+--         END,
+--         'ticket',
+--         CASE TG_OP
+--             WHEN 'DELETE' THEN OLD."ticketId"
+--             ELSE NEW."ticketId"
+--         END,
+--         CASE TG_OP
+--             WHEN 'INSERT' THEN 'create'
+--             WHEN 'UPDATE' THEN 'update'
+--             WHEN 'DELETE' THEN 'delete'
+--         END::audit_action,
+--         COALESCE(auth.uid(), CASE TG_OP
+--             WHEN 'DELETE' THEN OLD."submitterId"
+--             ELSE NEW."submitterId"
+--         END),
+--         changes_json,
+--         jsonb_build_object(
+--             'table', TG_TABLE_NAME,
+--             'schema', TG_TABLE_SCHEMA,
+--             'operation', TG_OP
+--         ),
+--         inet_client_addr(),
+--         current_setting('request.headers')::json->>'user-agent'
+--     );
+
+--     RETURN NULL;
+-- END;
+-- $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- -- Create triggers for ticket auditing
+-- CREATE TRIGGER audit_ticket_changes
+--     AFTER INSERT OR UPDATE OR DELETE ON "Tickets"
+--     FOR EACH ROW EXECUTE FUNCTION audit_ticket_changes();
 
 -- Function to record comment changes
 CREATE OR REPLACE FUNCTION audit_comment_changes()
@@ -1367,6 +2331,94 @@ CREATE INDEX idx_kb_article_sections_section ON "KBArticleSections"("sectionId")
 CREATE INDEX idx_kb_article_comments_article ON "KBArticleComments"("articleId");
 CREATE INDEX idx_kb_article_tags_tag ON "KBArticleTags"("tag");
 
+-- Enable RLS for knowledge base tables
+ALTER TABLE "KBCategories" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "KBSections" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "KBArticles" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "KBArticleSections" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "KBArticleComments" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "KBArticleSubscriptions" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "KBArticleTags" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "KBArticleAttachments" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "KBArticleUserSegments" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "KBArticleVersions" ENABLE ROW LEVEL SECURITY;
+
+-- Create READ policies for knowledge base
+CREATE POLICY "Users can view public categories in their account"
+ON "KBCategories" FOR SELECT
+TO authenticated
+USING (
+    "accountId" = (
+        SELECT "accountId" 
+        FROM "UserProfiles" 
+        WHERE "userId" = auth.uid()
+    )
+);
+
+CREATE POLICY "Users can view public sections in their account"
+ON "KBSections" FOR SELECT
+TO authenticated
+USING (
+    "accountId" = (
+        SELECT "accountId" 
+        FROM "UserProfiles" 
+        WHERE "userId" = auth.uid()
+    )
+);
+
+CREATE POLICY "Users can view articles they have access to"
+ON "KBArticles" FOR SELECT
+TO authenticated
+USING (
+    ("state" = 'published' AND "accountId" = (
+        SELECT "accountId" 
+        FROM "UserProfiles" 
+        WHERE "userId" = auth.uid()
+    ))
+    OR "authorId" = auth.uid()
+    OR EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND r."roleCategory" IN ('agent', 'admin', 'owner')
+    )
+);
+
+-- Create WRITE policies for knowledge base - only admins and authorized agents
+CREATE POLICY "Only admins and authorized agents can modify categories"
+ON "KBCategories" USING (
+    EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND (r."roleCategory" = 'admin' OR r."roleCategory" = 'owner')
+    )
+);
+
+CREATE POLICY "Only admins and authorized agents can modify sections"
+ON "KBSections" USING (
+    EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND (r."roleCategory" = 'admin' OR r."roleCategory" = 'owner')
+    )
+);
+
+CREATE POLICY "Authors and admins can modify articles"
+ON "KBArticles" USING (
+    "authorId" = auth.uid()
+    OR EXISTS (
+        SELECT 1 
+        FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND (r."roleCategory" = 'admin' OR r."roleCategory" = 'owner')
+    )
+);
 
 -- Add ticket-article linking table
 CREATE TABLE "TicketArticles" (
@@ -1381,6 +2433,22 @@ CREATE TABLE "TicketArticles" (
 CREATE INDEX idx_ticket_articles_ticket ON "TicketArticles"("ticketId");
 CREATE INDEX idx_ticket_articles_article ON "TicketArticles"("articleId");
 
+ALTER TABLE "TicketArticles" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view ticket article links they have access to"
+ON "TicketArticles" FOR SELECT
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM "Tickets" t
+        WHERE t."ticketId" = "TicketArticles"."ticketId"
+        AND t."accountId" = (
+            SELECT "accountId" 
+            FROM "UserProfiles" 
+            WHERE "userId" = auth.uid()
+        )
+    )
+);
 
 -- Create TicketSequences table to track last number per account
 CREATE TABLE "TicketSequences" (
@@ -1388,6 +2456,12 @@ CREATE TABLE "TicketSequences" (
     "lastNumber" BIGINT NOT NULL DEFAULT 0
 );
 
+-- Enable RLS for TicketSequences
+ALTER TABLE "TicketSequences" ENABLE ROW LEVEL SECURITY;
+
+-- Create policy for TicketSequences - only system can modify
+CREATE POLICY "Only system can access ticket sequences"
+ON "TicketSequences" USING (false);
 
 -- Create function to get next ticket number
 CREATE OR REPLACE FUNCTION get_next_ticket_number(account_id UUID)
@@ -1439,106 +2513,14 @@ CREATE TRIGGER prevent_ticket_number_update
     FOR EACH ROW
     EXECUTE FUNCTION prevent_ticket_number_update();
 
-
--- Policy for ticket creation - only authenticated users can create tickets for their account
-CREATE POLICY "Users can create tickets for their account"
-ON "Tickets" FOR INSERT
-TO authenticated
+-- Policy for Tickets to allow anonymous creation for submit_ticket accounts
+CREATE POLICY "anon_create_tickets" ON "public"."Tickets"
+FOR INSERT TO anon
 WITH CHECK (
-    "accountId" IN (
-        SELECT "accountId"
-        FROM "UserProfiles"
-        WHERE "userId" = auth.uid()
-    )
-);
-
--- Policy for ticket modification - staff members or ticket creators can modify
-CREATE POLICY "Staff or creators can modify tickets"
-ON "Tickets" FOR UPDATE
-TO authenticated
-USING (
-    -- Staff members can modify tickets in their account
-    EXISTS (
-        SELECT 1
-        FROM "UserProfiles" u
-        JOIN "Roles" r ON u."roleId" = r."roleId"
-        WHERE u."userId" = auth.uid()
-        AND u."accountId" = "Tickets"."accountId"
-        AND u."userType" = 'staff'
-    )
-    OR
-    -- End users can modify their own tickets
-    (
-        "requesterId" = auth.uid()
-        AND EXISTS (
-            SELECT 1
-            FROM "UserProfiles" u
-            WHERE u."userId" = auth.uid()
-            AND u."userType" = 'end_user'
-        )
-    )
-)
-WITH CHECK (
-    -- Same conditions as USING clause
-    EXISTS (
-        SELECT 1
-        FROM "UserProfiles" u
-        JOIN "Roles" r ON u."roleId" = r."roleId"
-        WHERE u."userId" = auth.uid()
-        AND u."accountId" = "Tickets"."accountId"
-        AND u."userType" = 'staff'
-    )
-    OR
-    (
-        "requesterId" = auth.uid()
-        AND EXISTS (
-            SELECT 1
-            FROM "UserProfiles" u
-            WHERE u."userId" = auth.uid()
-            AND u."userType" = 'end_user'
-        )
-    )
-);
-
--- Policy for ticket deletion - only admins can delete
-CREATE POLICY "Only admins can delete tickets"
-ON "Tickets" FOR DELETE
-TO authenticated
-USING (
-    EXISTS (
-        SELECT 1
-        FROM "UserProfiles" u
-        JOIN "Roles" r ON u."roleId" = r."roleId"
-        WHERE u."userId" = auth.uid()
-        AND u."accountId" = "Tickets"."accountId"
-        AND r."roleCategory" = 'admin'
-    )
-);
-
--- Policy for viewing tickets - staff members or ticket creators can view
-CREATE POLICY "Staff or creators can view tickets"
-ON "Tickets" FOR SELECT
-TO authenticated
-USING (
-    -- Staff members can view tickets in their account
-    EXISTS (
-        SELECT 1
-        FROM "UserProfiles" u
-        JOIN "Roles" r ON u."roleId" = r."roleId"
-        WHERE u."userId" = auth.uid()
-        AND u."accountId" = "Tickets"."accountId"
-        AND u."userType" = 'staff'
-    )
-    OR
-    -- End users can view their own tickets
-    (
-        "requesterId" = auth.uid()
-        AND EXISTS (
-            SELECT 1
-            FROM "UserProfiles" u
-            WHERE u."userId" = auth.uid()
-            AND u."userType" = 'end_user'
-        )
-    )
+  EXISTS (
+    SELECT 1 FROM "public"."Accounts"
+    WHERE "Accounts"."accountId" = "Tickets"."accountId"
+    AND "Accounts"."endUserAccountCreationType" = 'submit_ticket'
+  )
 );
 

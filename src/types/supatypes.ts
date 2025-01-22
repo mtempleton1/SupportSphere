@@ -46,6 +46,7 @@ export type Database = {
         Row: {
           accountId: string
           createdAt: string | null
+          defaultGroupId: string | null
           endUserAccountCreationType: Database["public"]["Enums"]["end_user_account_creation_type"]
           favicon: string | null
           name: string
@@ -57,6 +58,7 @@ export type Database = {
         Insert: {
           accountId?: string
           createdAt?: string | null
+          defaultGroupId?: string | null
           endUserAccountCreationType?: Database["public"]["Enums"]["end_user_account_creation_type"]
           favicon?: string | null
           name: string
@@ -68,6 +70,7 @@ export type Database = {
         Update: {
           accountId?: string
           createdAt?: string | null
+          defaultGroupId?: string | null
           endUserAccountCreationType?: Database["public"]["Enums"]["end_user_account_creation_type"]
           favicon?: string | null
           name?: string
@@ -77,6 +80,13 @@ export type Database = {
           updatedAt?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "Accounts_defaultGroupId_fkey"
+            columns: ["defaultGroupId"]
+            isOneToOne: false
+            referencedRelation: "Groups"
+            referencedColumns: ["groupId"]
+          },
           {
             foreignKeyName: "Accounts_ownerId_fkey"
             columns: ["ownerId"]
@@ -729,7 +739,6 @@ export type Database = {
           createdAt: string | null
           description: string | null
           groupId: string
-          isDefault: boolean | null
           isPrivate: boolean | null
           name: string
           solvedTicketReassignmentStrategy: string | null
@@ -740,7 +749,6 @@ export type Database = {
           createdAt?: string | null
           description?: string | null
           groupId?: string
-          isDefault?: boolean | null
           isPrivate?: boolean | null
           name: string
           solvedTicketReassignmentStrategy?: string | null
@@ -751,7 +759,6 @@ export type Database = {
           createdAt?: string | null
           description?: string | null
           groupId?: string
-          isDefault?: boolean | null
           isPrivate?: boolean | null
           name?: string
           solvedTicketReassignmentStrategy?: string | null
@@ -2062,6 +2069,7 @@ export type Database = {
           subject: string
           submitterId: string
           ticketId: string
+          ticketNumber: number
           type: Database["public"]["Enums"]["ticket_type"] | null
           updatedAt: string | null
         }
@@ -2085,6 +2093,7 @@ export type Database = {
           subject: string
           submitterId: string
           ticketId?: string
+          ticketNumber: number
           type?: Database["public"]["Enums"]["ticket_type"] | null
           updatedAt?: string | null
         }
@@ -2108,6 +2117,7 @@ export type Database = {
           subject?: string
           submitterId?: string
           ticketId?: string
+          ticketNumber?: number
           type?: Database["public"]["Enums"]["ticket_type"] | null
           updatedAt?: string | null
         }
@@ -2167,6 +2177,29 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "UserProfiles"
             referencedColumns: ["userId"]
+          },
+        ]
+      }
+      TicketSequences: {
+        Row: {
+          accountId: string
+          lastNumber: number
+        }
+        Insert: {
+          accountId: string
+          lastNumber?: number
+        }
+        Update: {
+          accountId?: string
+          lastNumber?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "TicketSequences_accountId_fkey"
+            columns: ["accountId"]
+            isOneToOne: true
+            referencedRelation: "Accounts"
+            referencedColumns: ["accountId"]
           },
         ]
       }
@@ -2365,6 +2398,12 @@ export type Database = {
           parent_id: string
         }
         Returns: boolean
+      }
+      get_next_ticket_number: {
+        Args: {
+          account_id: string
+        }
+        Returns: number
       }
       validate_domains: {
         Args: {
