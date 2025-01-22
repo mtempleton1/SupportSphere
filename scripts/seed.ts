@@ -417,18 +417,15 @@ async function seedCompanyData() {
       const groups = [
         {
           name: 'Customer Support',
-          description: 'General customer support team',
-          isDefault: true
+          description: 'General customer support team'
         },
         {
           name: 'Technical Support',
-          description: 'Technical issues and product support',
-          isDefault: false
+          description: 'Technical issues and product support'
         },
         {
           name: 'Billing Support',
-          description: 'Billing and subscription issues',
-          isDefault: false
+          description: 'Billing and subscription issues'
         }
       ]
 
@@ -444,6 +441,18 @@ async function seedCompanyData() {
 
       if (groupsError) throw groupsError
       console.log(`Created groups for ${account.name}`)
+
+      // Set the Customer Support group as the default group for the account
+      const customerSupportGroup = createdGroups.find(g => g.name === 'Customer Support')
+      if (customerSupportGroup) {
+        const { error: updateError } = await supabase
+          .from('Accounts')
+          .update({ defaultGroupId: customerSupportGroup.groupId })
+          .eq('accountId', account.accountId)
+
+        if (updateError) throw updateError
+        console.log(`Set default group for ${account.name}`)
+      }
 
       // 4. Create Organizations (without defaultGroupId initially)
       const numOrgs = faker.number.int({ min: 3, max: 8 })
