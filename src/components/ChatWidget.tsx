@@ -60,10 +60,7 @@ export const ChatWidget = ({ ticket, defaultOpen = false }: ChatWidgetProps) => 
           },
         }
       );
-      console.log(response)
       const { data, error: apiError } = await response.json();
-      console.log(data)
-      console.log(apiError)
       if (apiError) {
         throw new Error(apiError);
       }
