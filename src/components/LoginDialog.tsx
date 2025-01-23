@@ -69,7 +69,7 @@ export const LoginDialog = ({
           loginType: type
         }
       });
-
+      console.log(loginData);
       if (loginError) throw loginError;
 
       // Set the session in the client
@@ -82,7 +82,10 @@ export const LoginDialog = ({
 
       // Handle navigation based on user type and role
       if (type === 'staff') {
+        console.log("STAFF!")
+
         const roleCategory = loginData.user.roleCategory;
+        console.log(roleCategory);
         if (roleCategory === 'admin' || roleCategory === 'owner') {
           navigate('/admin');
         } else if (roleCategory === 'agent') {

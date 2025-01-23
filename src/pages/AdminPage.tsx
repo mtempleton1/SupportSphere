@@ -11,6 +11,16 @@ interface Account {
   endUserAccountCreationType: 'submit_ticket' | 'sign_up'
 }
 
+type RoleCategory = 'end_user' | 'agent' | 'admin' | 'owner'
+
+interface UserProfile {
+  userType: 'staff' | 'end_user'
+  roleId: string
+  Roles: {
+    roleCategory: RoleCategory
+  }
+}
+
 export function AdminPage() {
   const navigate = useNavigate()
   const [account, setAccount] = useState<Account | null>(null)
@@ -26,6 +36,50 @@ export function AdminPage() {
           return
         }
 
+        // Get role information from user metadata
+        const userType = session.user.user_metadata?.userType
+        const roleCategory = session.user.user_metadata?.roleCategory
+
+        // If metadata is not in user_metadata, try to get it from the login response data
+        if (!userType || !roleCategory) {
+          const { data, error: userError } = await supabase
+            .from('UserProfiles')
+            .select('userType, roleId, Roles!inner(roleCategory)')
+            .eq('userId', session.user.id)
+            .single()
+            
+
+          if (userError) throw userError
+
+          // Cast the data to unknown first to handle type mismatch
+          const userProfile = data as unknown as UserProfile
+          const roleCategory = userProfile.Roles.roleCategory
+
+          if (userProfile.userType !== 'staff' || 
+              (roleCategory !== 'admin' && roleCategory !== 'owner')) {
+            // If they're an agent, send them to the agent page
+            console.log("hello?")
+            if (userProfile.userType === 'staff' && roleCategory === 'agent') {
+              navigate('/agent')
+            } else {
+              console.log("ugh")
+              navigate('/')
+            }
+            return
+          }
+        } else {
+          if (userType !== 'staff' || 
+              (roleCategory !== 'admin' && roleCategory !== 'owner')) {
+            // If they're an agent, send them to the agent page
+            if (userType === 'staff' && roleCategory === 'agent') {
+              navigate('/agent')
+            } else {
+              navigate('/')
+            }
+            return
+          }
+        }
+
         // Get subdomain from hostname
         const hostname = window.location.hostname
         const subdomain = hostname.split('.')[0]
@@ -39,27 +93,6 @@ export function AdminPage() {
         if (accountError) throw accountError
         setAccount(account)
 
-        // Verify user is an admin for this account
-        const { data: userProfile, error: userError } = await supabase
-          .from('UserProfiles')
-          .select('userType, roleId, Roles!inner(roleCategory)')
-          .eq('userId', session.user.id)
-          .eq('accountId', account.accountId)
-          .single()
-
-        if (userError) throw userError
-
-        if (userProfile.userType !== 'staff' || 
-            (userProfile.Roles.roleCategory !== 'admin' && 
-             userProfile.Roles.roleCategory !== 'owner')) {
-          // If they're an agent, send them to the agent page
-          if (userProfile.userType === 'staff' && userProfile.Roles.roleCategory === 'agent') {
-            navigate('/agent')
-          } else {
-            navigate('/')
-          }
-          return
-        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch account')
         navigate('/')

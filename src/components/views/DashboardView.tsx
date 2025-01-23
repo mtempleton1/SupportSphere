@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { format } from "timeago.js";
 import {
   Home,
   Users,
@@ -69,41 +70,22 @@ export function DashboardView({ onTicketSelect }: DashboardViewProps) {
         if (!session) {
           return;
         }
+        
 
-        // Get the account ID for the current user
-        const { data: userProfile, error: userError } = await supabase
-          .from('UserProfiles')
-          .select('accountId')
-          .eq('userId', session.user.id)
-          .single();
+        // Call the fetch-tickets edge function
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_PROJECT_URL}/functions/v1/fetch-tickets`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        console.log(response)
+        const { data: transformedTickets, error } = await response.json();
 
-        if (userError) throw userError;
-
-        // Fetch tickets for the account with related data
-        const { data: ticketsData, error: ticketsError } = await supabase
-          .from('Tickets')
-          .select(`
-            *,
-            requester:UserProfiles!requesterId(name),
-            assignee:UserProfiles!assigneeId(name),
-            assigneeGroup:Groups!assigneeGroupId(name),
-            readStatus:TicketReadStatus!inner(lastReadAt)
-          `)
-          .eq('accountId', userProfile.accountId)
-          .order('updatedAt', { ascending: false });
-
-        if (ticketsError) throw ticketsError;
-
-        // Transform the data to match our Ticket interface
-        const transformedTickets = ticketsData.map(ticket => ({
-          ...ticket,
-          requester: ticket.requester || null,
-          assignee: ticket.assignee || null,
-          assigneeGroup: ticket.assigneeGroup || null,
-          readStatus: ticket.readStatus || null,
-          priority: ticket.priority as TicketPriority,
-          ticketNumber: ticket.ticketNumber,
-        }));
+        if (error) {
+          throw new Error(error);
+        }
 
         // Organize tickets into sections
         const sections: TicketSections = {
@@ -114,7 +96,7 @@ export function DashboardView({ onTicketSelect }: DashboardViewProps) {
           low: [],
         };
 
-        transformedTickets.forEach(ticket => {
+        transformedTickets.forEach((ticket: Ticket) => {
           // Check if ticket is unread and assigned to current user
           const isUnread = !ticket.readStatus?.lastReadAt || 
             new Date(ticket.readStatus.lastReadAt) < new Date(ticket.updatedAt || '');
@@ -147,7 +129,7 @@ export function DashboardView({ onTicketSelect }: DashboardViewProps) {
         setTickets(transformedTickets);
 
         // Calculate ticket counts
-        const counts = transformedTickets.reduce((acc, ticket) => {
+        const counts = transformedTickets.reduce((acc: Record<string, number>, ticket: Ticket) => {
           acc[ticket.status as keyof TicketCounts] = (acc[ticket.status as keyof TicketCounts] || 0) + 1;
           return acc;
         }, {} as Record<string, number>);
@@ -260,7 +242,7 @@ export function DashboardView({ onTicketSelect }: DashboardViewProps) {
                     size={16} 
                     className={`flex-shrink-0 fill-current ${getStatusColor(ticket.status)}`} 
                   />
-                  <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 invisible group-hover:visible bg-gray-900 text-white text-xs rounded py-1 px-2 w-64 z-50 whitespace-normal text-left">
+                  <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 invisible group-hover:visible bg-gray-900 text-white text-xs rounded py-1 px-2 w-64 whitespace-normal text-left" style={{ zIndex: 100000 }}>
                     <div className="font-medium mb-1 capitalize">{ticket.status.replace('_', ' ')}</div>
                     {getStatusDescription(ticket.status)}
                     <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1">
@@ -271,14 +253,26 @@ export function DashboardView({ onTicketSelect }: DashboardViewProps) {
                 <span className="text-blue-600 flex-shrink-0">#{ticket.ticketNumber}</span>
               </div>
             </td>
-            <td className="py-3 px-4 w-1/4 text-left" onClick={() => onTicketSelect(ticket.ticketId, ticket.subject, ticket.priority, ticket.ticketNumber)}>
+            <td className="py-3 px-4 w-1/4 text-left relative group" onClick={() => onTicketSelect(ticket.ticketId, ticket.subject, ticket.priority, ticket.ticketNumber)}>
               <span className="truncate block">{ticket.subject}</span>
+              <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 invisible group-hover:visible bg-gray-900 text-white text-xs rounded py-1 px-2 whitespace-nowrap">
+                Created {new Date(ticket.createdAt || '').toLocaleString()}
+                <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1">
+                  <div className="border-4 border-transparent border-t-gray-900"></div>
+                </div>
+              </div>
             </td>
             <td className="py-3 px-4 text-left" onClick={() => onTicketSelect(ticket.ticketId, ticket.subject, ticket.priority, ticket.ticketNumber)}>
               <span className="truncate block">{ticket.requester?.name || 'Unknown'}</span>
             </td>
-            <td className="py-3 px-4 text-left" onClick={() => onTicketSelect(ticket.ticketId, ticket.subject, ticket.priority, ticket.ticketNumber)}>
-              <span className="truncate block">{new Date(ticket.updatedAt || '').toLocaleString()}</span>
+            <td className="py-3 px-4 text-left relative group" onClick={() => onTicketSelect(ticket.ticketId, ticket.subject, ticket.priority, ticket.ticketNumber)}>
+              <span className="truncate block">{format(ticket.updatedAt || '')}</span>
+              <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 invisible group-hover:visible bg-gray-900 text-white text-xs rounded py-1 px-2 whitespace-nowrap">
+                {new Date(ticket.updatedAt || '').toLocaleString()}
+                <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1">
+                  <div className="border-4 border-transparent border-t-gray-900"></div>
+                </div>
+              </div>
             </td>
             <td className="py-3 px-4 text-left" onClick={() => onTicketSelect(ticket.ticketId, ticket.subject, ticket.priority, ticket.ticketNumber)}>
               <span className="truncate block">{ticket.assigneeGroup?.name || ''}</span>
@@ -350,74 +344,81 @@ export function DashboardView({ onTicketSelect }: DashboardViewProps) {
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 p-6">
-          <div className="mb-6">
-            <div className="flex divide-x">
-              {/* Open Tickets Section */}
-              <div className="pr-6 w-[300px]">
-                <h2 className="text-lg font-medium mb-4 text-left">Open Tickets</h2>
-                <div className="flex">
-                  <div className="bg-white p-4 rounded-l-lg border-l border-y w-[138px]">
-                    <div className="text-sm font-medium mb-2">You</div>
-                    <div className="text-2xl font-bold">999</div>
-                  </div>
-                  <div className="bg-white p-4 rounded-r-lg border w-[138px]">
-                    <div className="text-sm font-medium mb-2">Groups</div>
-                    <div className="text-2xl font-bold">999</div>
+        <div className="flex-1 flex flex-col">
+          {/* Fixed Header Section */}
+          <div className="flex-none p-6 bg-gray-50">
+            <div className="mb-6">
+              <div className="flex divide-x">
+                {/* Open Tickets Section */}
+                <div className="pr-6 w-[300px]">
+                  <h2 className="text-lg font-medium mb-4 text-left">Open Tickets</h2>
+                  <div className="flex">
+                    <div className="bg-white p-4 rounded-l-lg border-l border-y w-[138px]">
+                      <div className="text-sm font-medium mb-2">You</div>
+                      <div className="text-2xl font-bold">999</div>
+                    </div>
+                    <div className="bg-white p-4 rounded-r-lg border w-[138px]">
+                      <div className="text-sm font-medium mb-2">Groups</div>
+                      <div className="text-2xl font-bold">999</div>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Ticket Statistics Section */}
-              <div className="pl-6 w-[450px]">
-                <h2 className="text-lg font-medium mb-4 text-left">Ticket Statistics</h2>
-                <div className="flex">
-                  <div className="bg-white p-4 rounded-l-lg border-l border-y border-r w-[138px]">
-                    <div className="text-sm font-medium mb-2">Good</div>
-                    <div className="text-2xl font-bold">999</div>
-                  </div>
-                  <div className="bg-white p-4 border-y w-[138px]">
-                    <div className="text-sm font-medium mb-2">Bad</div>
-                    <div className="text-2xl font-bold">999</div>
-                  </div>
-                  <div className="bg-white p-4 rounded-r-lg border w-[138px]">
-                    <div className="text-sm font-medium mb-2">Solved</div>
-                    <div className="text-2xl font-bold">999</div>
+                {/* Ticket Statistics Section */}
+                <div className="pl-6 w-[450px]">
+                  <h2 className="text-lg font-medium mb-4 text-left">Ticket Statistics</h2>
+                  <div className="flex">
+                    <div className="bg-white p-4 rounded-l-lg border-l border-y border-r w-[138px]">
+                      <div className="text-sm font-medium mb-2">Good</div>
+                      <div className="text-2xl font-bold">999</div>
+                    </div>
+                    <div className="bg-white p-4 border-y w-[138px]">
+                      <div className="text-sm font-medium mb-2">Bad</div>
+                      <div className="text-2xl font-bold">999</div>
+                    </div>
+                    <div className="bg-white p-4 rounded-r-lg border w-[138px]">
+                      <div className="text-sm font-medium mb-2">Solved</div>
+                      <div className="text-2xl font-bold">999</div>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-          <div className="bg-white rounded-lg border p-4">
-            <table className="w-full">
-              <thead className="bg-gray-50 text-sm text-gray-500">
-                <tr>
-                  <th className="py-3 px-4 text-left font-medium w-12">
-                    <div className="flex items-center justify-center">
-                      <input
-                        type="checkbox"
-                        className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 transition-all duration-150 ease-in-out cursor-pointer hover:border-blue-400"
-                        checked={allSelected}
-                        onChange={(e) => handleSelectAll(e.target.checked)}
-                      />
-                    </div>
-                  </th>
-                  <th className="py-3 px-4 text-left font-medium w-[90px]"></th>
-                  <th className="py-3 px-4 text-left font-medium w-1/4">Subject</th>
-                  <th className="py-3 px-4 text-left font-medium w-1/5">Requester</th>
-                  <th className="py-3 px-4 text-left font-medium w-1/5">Requester updated</th>
-                  <th className="py-3 px-4 text-left font-medium w-1/5">Group</th>
-                  <th className="py-3 px-4 text-left font-medium w-1/5">Assignee</th>
-                </tr>
-              </thead>
-              <tbody>
-                {renderTicketSection('Require Action', ticketSections.requireAction)}
-                {renderTicketSection('Urgent Tickets', ticketSections.urgent)}
-                {renderTicketSection('High Priority', ticketSections.high)}
-                {renderTicketSection('Normal Priority', ticketSections.normal)}
-                {renderTicketSection('Low Priority', ticketSections.low)}
-              </tbody>
-            </table>
+
+          {/* Scrollable Content */}
+          <div className="flex-1 overflow-y-auto px-6 pb-6">
+            <div className="bg-white rounded-lg border p-4" style={{ overflow: 'visible' }}>
+              <table className="w-full">
+                <thead className="bg-gray-50 text-sm text-gray-500 sticky top-0">
+                  <tr>
+                    <th className="py-3 px-4 text-left font-medium w-12">
+                      <div className="flex items-center justify-center">
+                        <input
+                          type="checkbox"
+                          className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 transition-all duration-150 ease-in-out cursor-pointer hover:border-blue-400"
+                          checked={allSelected}
+                          onChange={(e) => handleSelectAll(e.target.checked)}
+                        />
+                      </div>
+                    </th>
+                    <th className="py-3 px-4 text-left font-medium w-[90px]"></th>
+                    <th className="py-3 px-4 text-left font-medium w-1/4">Subject</th>
+                    <th className="py-3 px-4 text-left font-medium w-1/5">Requester</th>
+                    <th className="py-3 px-4 text-left font-medium w-1/5">Requester updated</th>
+                    <th className="py-3 px-4 text-left font-medium w-1/5">Group</th>
+                    <th className="py-3 px-4 text-left font-medium w-1/5">Assignee</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {renderTicketSection('Require Action', ticketSections.requireAction)}
+                  {renderTicketSection('Urgent Tickets', ticketSections.urgent)}
+                  {renderTicketSection('High Priority', ticketSections.high)}
+                  {renderTicketSection('Normal Priority', ticketSections.normal)}
+                  {renderTicketSection('Low Priority', ticketSections.low)}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>

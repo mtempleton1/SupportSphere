@@ -5,6 +5,8 @@ import {
   Smile,
   Link2,
   Maximize2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 interface Account {
@@ -57,6 +59,7 @@ interface Ticket {
     name: string
   }
   Channels?: Channel
+  description: string
 }
 
 interface Comment {
@@ -78,101 +81,41 @@ export function TicketView({ ticketId }: TicketViewProps) {
   const [comments, setComments] = useState<Comment[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false)
 
   useEffect(() => {
     async function fetchTicketData() {
       try {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) {
+          setError('No active session')
           return
         }
 
-        // Get subdomain from hostname
-        const hostname = window.location.hostname
-        const subdomain = hostname.split('.')[0]
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_PROJECT_URL}/functions/v1/fetch-ticket?ticketId=${ticketId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+          }
+        )
 
-        const { data: account, error: accountError } = await supabase
-          .from('Accounts')
-          .select('accountId, name, subdomain, endUserAccountCreationType')
-          .eq('subdomain', subdomain)
-          .single()
-
-        if (accountError) throw accountError
-        setAccount(account)
-
-        // Verify user is an agent or admin for this account
-        const { data: userProfile, error: userError } = await supabase
-          .from('UserProfiles')
-          .select(`
-            userType,
-            roleId,
-            Roles (
-              roleCategory
-            )
-          `)
-          .eq('userId', session.user.id)
-          .eq('accountId', account.accountId)
-          .single()
-
-        if (userError) throw userError
-
-        const profile = userProfile as UserProfile
-
-        if (profile.userType !== 'staff') {
-          return
+        const { data, error: apiError } = await response.json()
+        
+        if (apiError) {
+          throw new Error(apiError)
         }
 
-        // Fetch ticket data
-        const { data: ticketData, error: ticketError } = await supabase
-          .from('Tickets')
-          .select(`
-            *,
-            Brands (
-              brandId,
-              name
-            ),
-            Requesters:UserProfiles!Tickets_requesterId_fkey (
-              userId,
-              name,
-              userType
-            ),
-            Assignees:UserProfiles!Tickets_assigneeId_fkey (
-              userId,
-              name,
-              userType
-            ),
-            Groups (
-              groupId,
-              name
-            ),
-            Channels (
-              type,
-              name
-            )
-          `)
-          .eq('ticketId', ticketId)
-          .single()
+        if (!data) {
+          throw new Error('No data returned from API')
+        }
 
-        if (ticketError) throw ticketError
-        setTicket(ticketData)
-
-        // Fetch comments
-        const { data: commentsData, error: commentsError } = await supabase
-          .from('TicketComments')
-          .select(`
-            *,
-            author:UserProfiles!TicketComments_authorId_fkey (
-              userId,
-              name,
-              userType
-            )
-          `)
-          .eq('ticketId', ticketId)
-          .order('createdAt', { ascending: true })
-
-        if (commentsError) throw commentsError
-        setComments(commentsData)
-
+        setAccount(data.account)
+        setTicket(data.ticket)
+        setComments(data.comments)
+        console.log(data.comments)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch data')
       } finally {
@@ -182,6 +125,11 @@ export function TicketView({ ticketId }: TicketViewProps) {
 
     fetchTicketData()
   }, [ticketId])
+
+  const truncateDescription = (text: string, maxLength: number = 150) => {
+    if (text.length <= maxLength) return text;
+    return text.slice(0, maxLength) + '...';
+  };
 
   if (loading) return <div>Loading...</div>
   if (error) return <div>Error: {error}</div>
@@ -242,41 +190,26 @@ export function TicketView({ ticketId }: TicketViewProps) {
           <h1 className="text-xl font-medium mb-1 text-left">
             Conversation with {ticket.Requesters?.name || 'Unknown Requester'}
           </h1>
-          <div className="text-sm text-red-500 text-left">Via {ticket.Channels?.name?.replace(/\s*Channel\s*/i, '') || ticket.Channels?.type?.replace(/_/g, ' ') || 'unknown channel'}</div>
+          <div className="text-sm text-red-500 text-left mb-2">
+            Via {ticket.Channels?.name?.replace(/\s*Channel\s*/i, '') || ticket.Channels?.type?.replace(/_/g, ' ') || 'unknown channel'}
+          </div>
+          <div 
+            className="relative text-sm text-gray-600 text-left cursor-pointer group"
+            onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
+          >
+            <div className={`${isDescriptionExpanded ? '' : 'line-clamp-2'}`}>
+              {ticket.description}
+            </div>
+            <button 
+              className="absolute right-0 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded-full transition-colors"
+              aria-label={isDescriptionExpanded ? 'Collapse description' : 'Expand description'}
+            >
+              {isDescriptionExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
-          <div className="flex space-x-3">
-            <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0" />
-            <div>
-              <div className="flex items-center space-x-2 mb-1">
-                <span className="font-medium">
-                  {ticket.Requesters?.name || 'Unknown Requester'}
-                </span>
-                <span className="text-sm text-gray-500">
-                  {new Date(ticket.createdAt).toLocaleTimeString()}
-                </span>
-              </div>
-              <div className="bg-blue-50 rounded-lg p-3">
-                <p>{ticket.subject}</p>
-              </div>
-            </div>
-          </div>
-          <div className="flex space-x-3">
-            <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0" />
-            <div>
-              <div className="flex items-center space-x-2 mb-1">
-                <span className="font-medium">
-                  {ticket.Assignees?.name || 'Unassigned'}
-                </span>
-                <span className="text-sm text-gray-500">
-                  {new Date(ticket.updatedAt).toLocaleTimeString()}
-                </span>
-              </div>
-              <div className="bg-gray-100 rounded-lg p-3">
-                <p>{ticket.subject}</p>
-              </div>
-            </div>
-          </div>
+
 
           {/* Comments */}
           {comments.map((comment) => (

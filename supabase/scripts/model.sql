@@ -74,8 +74,6 @@ CREATE TABLE "Roles" (
     )
 );
 
--- Enable RLS for Roles
--- ALTER TABLE "Roles" ENABLE ROW LEVEL SECURITY;
 
 -- Create Groups Table (depends on Accounts)
 CREATE TABLE "Groups" (
@@ -89,8 +87,6 @@ CREATE TABLE "Groups" (
     "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Enable RLS for Groups
--- ALTER TABLE "Groups" ENABLE ROW LEVEL SECURITY;
 
 -- Add defaultGroupId to Accounts table (after Groups table creation)
 ALTER TABLE "Accounts"
@@ -130,6 +126,158 @@ CREATE TABLE "UserProfiles" (
     CONSTRAINT "unique_email_per_account" UNIQUE("userId", "accountId")
 );
 
+
+-- Enable RLS for Groups
+ALTER TABLE "Groups" ENABLE ROW LEVEL SECURITY;
+
+-- Create SELECT policy - Staff can view groups in their account
+CREATE POLICY "Staff can view groups in their account"
+ON "Groups" FOR SELECT
+TO authenticated
+USING (
+    -- Staff can view groups in their account
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        WHERE u."userId" = auth.uid()
+        AND u."userType" = 'staff'
+        AND u."accountId" = "Groups"."accountId"
+    )
+);
+
+-- Create INSERT policy - Only admin staff can create groups in their account
+CREATE POLICY "Admin staff can create groups in their account"
+ON "Groups" FOR INSERT
+TO authenticated
+WITH CHECK (
+    -- Admin staff can create groups in their account
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND u."userType" = 'staff'
+        AND r."roleCategory" = 'admin'
+        AND u."accountId" = "Groups"."accountId"
+    )
+);
+
+-- Create UPDATE policy - Only admin staff can update groups in their account
+CREATE POLICY "Admin staff can update groups in their account"
+ON "Groups" FOR UPDATE
+TO authenticated
+USING (
+    -- Admin staff can update groups in their account
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND u."userType" = 'staff'
+        AND r."roleCategory" = 'admin'
+        AND u."accountId" = "Groups"."accountId"
+    )
+)
+WITH CHECK (
+    -- Admin staff can update groups in their account
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND u."userType" = 'staff'
+        AND r."roleCategory" = 'admin'
+        AND u."accountId" = "Groups"."accountId"
+    )
+);
+
+-- Create DELETE policy - Only admin staff can delete groups in their account
+CREATE POLICY "Admin staff can delete groups in their account"
+ON "Groups" FOR DELETE
+TO authenticated
+USING (
+    -- Admin staff can delete groups in their account
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND u."userType" = 'staff'
+        AND r."roleCategory" = 'admin'
+        AND u."accountId" = "Groups"."accountId"
+    )
+);
+
+-- Enable RLS for Roles
+ALTER TABLE "Roles" ENABLE ROW LEVEL SECURITY;
+
+-- Create SELECT policy - Only staff can view roles in their account
+CREATE POLICY "Staff can view roles in their account"
+ON "Roles" FOR SELECT
+TO authenticated
+USING (
+    -- Staff can view roles in their account
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        WHERE u."userId" = auth.uid()
+        AND u."userType" = 'staff'
+        AND u."accountId" = "Roles"."accountId"
+    )
+);
+
+-- Create INSERT policy - Only admin staff can create roles in their account
+CREATE POLICY "Admin staff can create roles in their account"
+ON "Roles" FOR INSERT
+TO authenticated
+WITH CHECK (
+    -- Admin staff can create roles in their account
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND u."userType" = 'staff'
+        AND r."roleCategory" = 'admin'
+        AND u."accountId" = "Roles"."accountId"
+    )
+);
+
+-- Create UPDATE policy - Only admin staff can update roles in their account
+CREATE POLICY "Admin staff can update roles in their account"
+ON "Roles" FOR UPDATE
+TO authenticated
+USING (
+    -- Admin staff can update roles in their account
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND u."userType" = 'staff'
+        AND r."roleCategory" = 'admin'
+        AND u."accountId" = "Roles"."accountId"
+    )
+)
+WITH CHECK (
+    -- Admin staff can update roles in their account
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND u."userType" = 'staff'
+        AND r."roleCategory" = 'admin'
+        AND u."accountId" = "Roles"."accountId"
+    )
+);
+
+-- Create DELETE policy - Only admin staff can delete roles in their account
+CREATE POLICY "Admin staff can delete roles in their account"
+ON "Roles" FOR DELETE
+TO authenticated
+USING (
+    -- Admin staff can delete roles in their account
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND u."userType" = 'staff'
+        AND r."roleCategory" = 'admin'
+        AND u."accountId" = "Roles"."accountId"
+    )
+);
 -- Enable RLS for Accounts
 ALTER TABLE "Accounts" ENABLE ROW LEVEL SECURITY;
 
@@ -157,16 +305,11 @@ ADD COLUMN "ownerId" UUID REFERENCES "UserProfiles"("userId") ON DELETE SET NULL
 ALTER TABLE "UserProfiles" ENABLE ROW LEVEL SECURITY;
 
 -- Create SELECT policy - Users can view their own profile or staff can view profiles in their account
-CREATE POLICY "Users can view their own profile"
+CREATE POLICY "Users can view their own profile or staff can view profiles in their account"
 ON "UserProfiles" FOR SELECT
 TO authenticated
 USING (
     auth.uid() = "userId" -- User can view their own profile
-    OR (
-        -- Staff can view profiles in their account
-        (auth.jwt()->>'userType')::text = 'staff'
-        AND (auth.jwt()->'app_metadata'->>'accountId')::uuid = "accountId"
-    )
 );
 
 
@@ -196,26 +339,18 @@ USING (
     auth.uid() = "userId" -- User can update their own profile
     OR (
         -- Admins can update profiles in their account
-        EXISTS (
-            SELECT 1 FROM "UserProfiles" updater
-            JOIN "Roles" r ON updater."roleId" = r."roleId"
-            WHERE updater."userId" = auth.uid()
-            AND updater."accountId" = "UserProfiles"."accountId"
-            AND r."roleCategory" = 'admin'
-        )
+        (auth.jwt()->'user_metadata'->>'userType')::text = 'staff'
+        AND (auth.jwt()->'user_metadata'->>'roleCategory')::text = 'admin'
+        AND (auth.jwt()->'user_metadata'->>'accountId')::uuid = "accountId"
     )
 )
 WITH CHECK (
     auth.uid() = "userId" -- User can update their own profile
     OR (
         -- Admins can update profiles in their account
-        EXISTS (
-            SELECT 1 FROM "UserProfiles" updater
-            JOIN "Roles" r ON updater."roleId" = r."roleId"
-            WHERE updater."userId" = auth.uid()
-            AND updater."accountId" = "UserProfiles"."accountId"
-            AND r."roleCategory" = 'admin'
-        )
+        (auth.jwt()->'user_metadata'->>'userType')::text = 'staff'
+        AND (auth.jwt()->'user_metadata'->>'roleCategory')::text = 'admin'
+        AND (auth.jwt()->'user_metadata'->>'accountId')::uuid = "accountId"
     )
 );
 
@@ -731,6 +866,82 @@ CREATE TABLE "Channels" (
     "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE("accountId", "type", "brandId")  -- One channel type per brand per account
+);
+
+-- Enable RLS for Channels
+ALTER TABLE "Channels" ENABLE ROW LEVEL SECURITY;
+
+-- Create SELECT policy - Staff can view channels in their account
+CREATE POLICY "Staff can view channels in their account"
+ON "Channels" FOR SELECT
+TO authenticated
+USING (
+    -- Staff can view channels in their account
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        WHERE u."userId" = auth.uid()
+        AND u."userType" = 'staff'
+        AND u."accountId" = "Channels"."accountId"
+    )
+);
+
+-- Create INSERT policy - Only admin staff can create channels in their account
+CREATE POLICY "Admin staff can create channels in their account"
+ON "Channels" FOR INSERT
+TO authenticated
+WITH CHECK (
+    -- Admin staff can create channels in their account
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND u."userType" = 'staff'
+        AND r."roleCategory" = 'admin'
+        AND u."accountId" = "Channels"."accountId"
+    )
+);
+
+-- Create UPDATE policy - Only admin staff can update channels in their account
+CREATE POLICY "Admin staff can update channels in their account"
+ON "Channels" FOR UPDATE
+TO authenticated
+USING (
+    -- Admin staff can update channels in their account
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND u."userType" = 'staff'
+        AND r."roleCategory" = 'admin'
+        AND u."accountId" = "Channels"."accountId"
+    )
+)
+WITH CHECK (
+    -- Admin staff can update channels in their account
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND u."userType" = 'staff'
+        AND r."roleCategory" = 'admin'
+        AND u."accountId" = "Channels"."accountId"
+    )
+);
+
+-- Create DELETE policy - Only admin staff can delete channels in their account
+CREATE POLICY "Admin staff can delete channels in their account"
+ON "Channels" FOR DELETE
+TO authenticated
+USING (
+    -- Admin staff can delete channels in their account
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND u."userType" = 'staff'
+        AND r."roleCategory" = 'admin'
+        AND u."accountId" = "Channels"."accountId"
+    )
 );
 
 -- Create ChannelInbox Table for email channels
@@ -1445,10 +1656,10 @@ CREATE POLICY "Users can create tickets for their account"
 ON "Tickets" FOR INSERT
 TO authenticated
 WITH CHECK (
-    "accountId" IN (
-        SELECT "accountId"
-        FROM "UserProfiles"
-        WHERE "userId" = auth.uid()
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        WHERE u."userId" = auth.uid()
+        AND u."accountId" = "Tickets"."accountId"
     )
 );
 
@@ -1459,44 +1670,34 @@ TO authenticated
 USING (
     -- Staff members can modify tickets in their account
     EXISTS (
-        SELECT 1
-        FROM "UserProfiles" u
-        JOIN "Roles" r ON u."roleId" = r."roleId"
+        SELECT 1 FROM "UserProfiles" u
         WHERE u."userId" = auth.uid()
-        AND u."accountId" = "Tickets"."accountId"
         AND u."userType" = 'staff'
+        AND u."accountId" = "Tickets"."accountId"
     )
     OR
     -- End users can modify their own tickets
-    (
-        "requesterId" = auth.uid()
-        AND EXISTS (
-            SELECT 1
-            FROM "UserProfiles" u
-            WHERE u."userId" = auth.uid()
-            AND u."userType" = 'end_user'
-        )
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        WHERE u."userId" = auth.uid()
+        AND u."userType" = 'end_user'
+        AND "Tickets"."requesterId" = auth.uid()
     )
 )
 WITH CHECK (
     -- Same conditions as USING clause
     EXISTS (
-        SELECT 1
-        FROM "UserProfiles" u
-        JOIN "Roles" r ON u."roleId" = r."roleId"
+        SELECT 1 FROM "UserProfiles" u
         WHERE u."userId" = auth.uid()
-        AND u."accountId" = "Tickets"."accountId"
         AND u."userType" = 'staff'
+        AND u."accountId" = "Tickets"."accountId"
     )
     OR
-    (
-        "requesterId" = auth.uid()
-        AND EXISTS (
-            SELECT 1
-            FROM "UserProfiles" u
-            WHERE u."userId" = auth.uid()
-            AND u."userType" = 'end_user'
-        )
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        WHERE u."userId" = auth.uid()
+        AND u."userType" = 'end_user'
+        AND "Tickets"."requesterId" = auth.uid()
     )
 );
 
@@ -1506,12 +1707,12 @@ ON "Tickets" FOR DELETE
 TO authenticated
 USING (
     EXISTS (
-        SELECT 1
-        FROM "UserProfiles" u
+        SELECT 1 FROM "UserProfiles" u
         JOIN "Roles" r ON u."roleId" = r."roleId"
         WHERE u."userId" = auth.uid()
-        AND u."accountId" = "Tickets"."accountId"
+        AND u."userType" = 'staff'
         AND r."roleCategory" = 'admin'
+        AND u."accountId" = "Tickets"."accountId"
     )
 );
 
@@ -1522,23 +1723,284 @@ TO authenticated
 USING (
     -- Staff members can view tickets in their account
     EXISTS (
-        SELECT 1
-        FROM "UserProfiles" u
-        JOIN "Roles" r ON u."roleId" = r."roleId"
+        SELECT 1 FROM "UserProfiles" u
         WHERE u."userId" = auth.uid()
-        AND u."accountId" = "Tickets"."accountId"
         AND u."userType" = 'staff'
+        AND u."accountId" = "Tickets"."accountId"
     )
     OR
     -- End users can view their own tickets
-    (
-        "requesterId" = auth.uid()
-        AND EXISTS (
-            SELECT 1
-            FROM "UserProfiles" u
-            WHERE u."userId" = auth.uid()
-            AND u."userType" = 'end_user'
-        )
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        WHERE u."userId" = auth.uid()
+        AND u."userType" = 'end_user'
+        AND "Tickets"."requesterId" = auth.uid()
     )
 );
+
+-- Enable RLS for AuditLogs
+ALTER TABLE "AuditLogs" ENABLE ROW LEVEL SECURITY;
+
+-- Create SELECT policy - Authenticated users can view audit logs in their account
+CREATE POLICY "Authenticated users can view audit logs in their account"
+ON "AuditLogs" FOR SELECT
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        WHERE u."userId" = auth.uid()
+        AND u."accountId" = "AuditLogs"."accountId"
+    )
+);
+
+-- Create INSERT policy - Authenticated users can create audit logs in their account
+CREATE POLICY "Authenticated users can create audit logs in their account"
+ON "AuditLogs" FOR INSERT
+TO authenticated
+WITH CHECK (
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        WHERE u."userId" = auth.uid()
+        AND u."accountId" = "AuditLogs"."accountId"
+    )
+);
+
+-- Create UPDATE policy - Authenticated users can update audit logs in their account
+CREATE POLICY "Authenticated users can update audit logs in their account"
+ON "AuditLogs" FOR UPDATE
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        WHERE u."userId" = auth.uid()
+        AND u."accountId" = "AuditLogs"."accountId"
+    )
+)
+WITH CHECK (
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        WHERE u."userId" = auth.uid()
+        AND u."accountId" = "AuditLogs"."accountId"
+    )
+);
+
+-- Create DELETE policy - Authenticated users can delete audit logs in their account
+CREATE POLICY "Authenticated users can delete audit logs in their account"
+ON "AuditLogs" FOR DELETE
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        WHERE u."userId" = auth.uid()
+        AND u."accountId" = "AuditLogs"."accountId"
+    )
+);
+
+-- Enable RLS for Brands
+ALTER TABLE "Brands" ENABLE ROW LEVEL SECURITY;
+
+-- Create SELECT policy - Anyone can view brands
+CREATE POLICY "Anyone can view brands"
+ON "Brands" FOR SELECT
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        WHERE u."userId" = auth.uid()
+        AND u."accountId" = "Brands"."accountId"
+    )
+);
+
+-- Create DELETE policy - Only staff can delete tags for tickets in their account
+CREATE POLICY "Staff can delete ticket tags in their account"
+ON "TicketTags" FOR DELETE
+TO authenticated
+USING (
+    -- Staff can delete tags for tickets in their account
+    EXISTS (
+        SELECT 1 FROM "Tickets" t
+        JOIN "UserProfiles" u ON u."userId" = auth.uid()
+        WHERE t."ticketId" = "TicketTags"."ticketId"
+        AND u."userType" = 'staff'
+        AND u."accountId" = t."accountId"
+    )
+);
+
+-- Enable RLS for TicketSequences
+ALTER TABLE "TicketSequences" ENABLE ROW LEVEL SECURITY;
+
+-- Create SELECT policy - Authenticated users can view sequences in their account
+CREATE POLICY "Authenticated users can view ticket sequences in their account"
+ON "TicketSequences" FOR SELECT
+TO authenticated
+USING (
+    -- Users can view sequences in their account
+    (auth.jwt()->'user_metadata'->>'accountId')::uuid = "accountId"
+);
+
+-- Create UPDATE policy - Authenticated users can update sequences in their account
+CREATE POLICY "Authenticated users can update ticket sequences in their account"
+ON "TicketSequences" FOR UPDATE
+TO authenticated
+USING (
+    -- Users can update sequences in their account
+    (auth.jwt()->'user_metadata'->>'accountId')::uuid = "accountId"
+)
+WITH CHECK (
+    -- Users can update sequences in their account
+    (auth.jwt()->'user_metadata'->>'accountId')::uuid = "accountId"
+);
+
+-- Enable RLS for TicketReadStatus
+ALTER TABLE "TicketReadStatus" ENABLE ROW LEVEL SECURITY;
+
+-- Create SELECT policy - Users can view read status for tickets in their account
+CREATE POLICY "Users can view ticket read status in their account"
+ON "TicketReadStatus" FOR SELECT
+TO authenticated
+USING (
+    -- -- Users can view read status for tickets in their account
+    -- EXISTS (
+    --     SELECT 1 FROM "Tickets" t
+    --     JOIN "UserProfiles" u ON u."userId" = auth.uid()
+    --     WHERE t."ticketId" = "TicketReadStatus"."ticketId"
+    --     AND u."accountId" = t."accountId"
+    -- )
+    true
+);
+
+-- Create INSERT policy - Users can create read status for their own user
+CREATE POLICY "Users can create their own ticket read status"
+ON "TicketReadStatus" FOR INSERT
+TO authenticated
+WITH CHECK (
+    -- Users can only create read status for themselves
+    "userId" = auth.uid()
+);
+
+-- Create UPDATE policy - Users can update read status for their own user
+CREATE POLICY "Users can update their own ticket read status"
+ON "TicketReadStatus" FOR UPDATE
+TO authenticated
+USING (
+    -- Users can only update read status for themselves
+    "userId" = auth.uid()
+)
+WITH CHECK (
+    -- Users can only update read status for themselves
+    "userId" = auth.uid()
+);
+
+-- Enable RLS for Macros
+ALTER TABLE "Macros" ENABLE ROW LEVEL SECURITY;
+
+-- Create SELECT policy - Staff can view macros in their account
+CREATE POLICY "Staff can view macros in their account"
+ON "Macros" FOR SELECT
+TO authenticated
+USING (
+    -- Staff can view macros in their account
+    (auth.jwt()->'user_metadata'->>'userType')::text = 'staff'
+    AND (auth.jwt()->'user_metadata'->>'accountId')::uuid = "accountId"
+);
+
+-- Create INSERT policy - Staff can create macros in their account
+CREATE POLICY "Staff can create macros in their account"
+ON "Macros" FOR INSERT
+TO authenticated
+WITH CHECK (
+    -- Staff can create macros in their account
+    (auth.jwt()->'user_metadata'->>'userType')::text = 'staff'
+    AND (auth.jwt()->'user_metadata'->>'accountId')::uuid = "accountId"
+);
+
+-- Create UPDATE policy - Staff can update macros in their account
+CREATE POLICY "Staff can update macros in their account"
+ON "Macros" FOR UPDATE
+TO authenticated
+USING (
+    -- Staff can update macros in their account
+    (auth.jwt()->'user_metadata'->>'userType')::text = 'staff'
+    AND (auth.jwt()->'user_metadata'->>'accountId')::uuid = "accountId"
+)
+WITH CHECK (
+    -- Staff can update macros in their account
+    (auth.jwt()->'user_metadata'->>'userType')::text = 'staff'
+    AND (auth.jwt()->'user_metadata'->>'accountId')::uuid = "accountId"
+);
+
+-- Create DELETE policy - Staff can delete macros in their account
+CREATE POLICY "Staff can delete macros in their account"
+ON "Macros" FOR DELETE
+TO authenticated
+USING (
+    -- Staff can delete macros in their account
+    (auth.jwt()->'user_metadata'->>'userType')::text = 'staff'
+    AND (auth.jwt()->'user_metadata'->>'accountId')::uuid = "accountId"
+);
+
+-- Enable RLS for Permissions
+ALTER TABLE "Permissions" ENABLE ROW LEVEL SECURITY;
+
+-- Create SELECT policy - Anyone can read permissions
+CREATE POLICY "Anyone can read permissions"
+ON "Permissions" FOR SELECT
+TO public, anon, authenticated
+USING (true);
+
+-- Enable RLS for TicketCustomFieldValues
+ALTER TABLE "TicketCustomFieldValues" ENABLE ROW LEVEL SECURITY;
+
+-- Create SELECT policy - Anyone can read custom field values
+CREATE POLICY "Anyone can read custom field values"
+ON "TicketCustomFieldValues" FOR SELECT
+TO authenticated
+USING (true);
+
+-- Create INSERT policy - Anyone can create custom field values
+CREATE POLICY "Anyone can create custom field values"
+ON "TicketCustomFieldValues" FOR INSERT
+TO authenticated
+WITH CHECK (true);
+
+-- Create UPDATE policy - Anyone can update custom field values
+CREATE POLICY "Anyone can update custom field values"
+ON "TicketCustomFieldValues" FOR UPDATE
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Create DELETE policy - Anyone can delete custom field values
+CREATE POLICY "Anyone can delete custom field values"
+ON "TicketCustomFieldValues" FOR DELETE
+TO authenticated
+USING (true);
+
+-- Enable RLS for Organizations
+ALTER TABLE "Organizations" ENABLE ROW LEVEL SECURITY;
+
+-- Create SELECT policy - Anyone can read organizations
+CREATE POLICY "Anyone can read organizations"
+ON "Organizations" FOR SELECT
+TO authenticated
+USING (true);
+
+-- Create INSERT policy - Anyone can create organizations
+CREATE POLICY "Anyone can create organizations"
+ON "Organizations" FOR INSERT
+TO authenticated
+WITH CHECK (true);
+
+-- Create UPDATE policy - Anyone can update organizations
+CREATE POLICY "Anyone can update organizations"
+ON "Organizations" FOR UPDATE
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Create DELETE policy - Anyone can delete organizations
+CREATE POLICY "Anyone can delete organizations"
+ON "Organizations" FOR DELETE
+TO authenticated
+USING (true);
 

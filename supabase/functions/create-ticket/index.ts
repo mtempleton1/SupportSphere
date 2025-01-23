@@ -68,6 +68,11 @@ interface SupabaseError {
 interface SuccessResponse {
   data: string  // ticketId
   error: null
+  session?: {
+    access_token: string
+    refresh_token: string
+    expires_in: number
+  }
 }
 
 interface ErrorResponse {
@@ -115,8 +120,21 @@ serve(async (req) => {
 
     // Initialize Supabase clients - one with service role for fetching data
     const adminClient = createClient(supabaseUrl, supabaseServiceKey)
-    // And one with anon role for creating the ticket (will use RLS)
-    const anonClient = createClient(supabaseUrl, supabaseAnonKey)
+
+    // Get auth header to check if user is already authenticated
+    const authHeader = req.headers.get('authorization')
+    let userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+        detectSessionInUrl: false
+      },
+      global: {
+        headers: {
+          authorization: authHeader || ''
+        }
+      }
+    })
 
     // Use service role to get account and related data
     const { data: account, error: accountError } = await adminClient
@@ -177,19 +195,14 @@ serve(async (req) => {
       channelId = channel.channelId
     }
 
-    // Get or create user profile using service role
-    const { data: userProfile, error: userError } = await adminClient
-      .from('UserProfiles')
-      .select('userId')
-      .eq('accountId', account.accountId)
-      .eq('userType', 'end_user')
-      .eq('email', email)
-      .single()
-
+    // Check if user is already authenticated
+    const { data: { user: existingUser }, error: authError } = await userClient.auth.getUser()
     let userId: string
-    if (userError) {
+    let sessionForResponse: { access_token: string, refresh_token: string, expires_in: number } | undefined
+
+    if (!existingUser || authError) {
       // Generate a random password for the new user
-      const password = Math.random().toString(36).slice(-12) + Math.random().toString(36).slice(-12);
+      const password = "Password123!"
 
       // Create auth user first using admin client
       const { data: authUser, error: signUpError } = await adminClient.auth.admin.createUser({
@@ -225,12 +238,70 @@ serve(async (req) => {
         throw new Error('Failed to create user profile: ' + createUserError?.message);
       }
       userId = authUser.user.id;
+
+      try {
+        // Create a new client specifically for signing in
+        const signInClient = createClient(supabaseUrl, supabaseAnonKey, {
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false,
+            detectSessionInUrl: false
+          }
+        })
+
+        // Sign in as the new user to get a session
+        const { data: signInData, error: signInError } = await signInClient.auth.signInWithPassword({
+          email,
+          password
+        })
+
+        if (signInError) {
+          console.error('Sign in error details:', signInError)
+          throw new Error(`Failed to sign in: ${signInError.message}`)
+        }
+
+        if (!signInData?.session?.access_token) {
+          console.error('Sign in data:', signInData)
+          throw new Error('No session token received after sign in')
+        }
+
+        // Update userClient with the new session
+        userClient = createClient(supabaseUrl, supabaseAnonKey, {
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false,
+            detectSessionInUrl: false
+          },
+          global: {
+            headers: {
+              authorization: `Bearer ${signInData.session.access_token}`
+            }
+          }
+        })
+
+        // Store session for response
+        sessionForResponse = {
+          access_token: signInData.session.access_token,
+          refresh_token: signInData.session.refresh_token,
+          expires_in: signInData.session.expires_in
+        }
+
+      } catch (signInError) {
+        console.error('Detailed sign in error:', {
+          error: signInError,
+          message: signInError instanceof Error ? signInError.message : 'Unknown sign in error',
+          stack: signInError instanceof Error ? signInError.stack : undefined
+        })
+
+        // If sign in fails, fall back to using admin client for ticket creation
+        userClient = adminClient
+      }
     } else {
-      userId = userProfile.userId;
+      userId = existingUser.id;
     }
 
-    // Create ticket using anon client (will use RLS)
-    const { data: ticket, error: ticketError } = await anonClient
+    // Create ticket using authenticated user client
+    const { data: ticket, error: ticketError } = await userClient
       .from('Tickets')
       .insert({
         accountId: account.accountId,
@@ -242,6 +313,8 @@ serve(async (req) => {
         requesterId: userId,
         submitterId: userId,
         isPublic: true,
+        priority: 'low',
+        type: 'problem',
       })
       .select()
       .single()
@@ -266,7 +339,8 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         data: ticket.ticketId,
-        error: null
+        error: null,
+        session: sessionForResponse
       } as SuccessResponse),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )

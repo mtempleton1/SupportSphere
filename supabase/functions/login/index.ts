@@ -112,12 +112,16 @@ serve(async (req) => {
     // Return the successful session and user profile data
     return new Response(
       JSON.stringify({
-        session: authData.session,
-        user: {
-          ...authData.user,
-          userType: userProfile.userType,
-          roleId: userProfile.roleId,
-          roleCategory: userProfile.Roles?.roleCategory
+        session: {
+          ...authData.session,
+          user: {
+            ...authData.session.user,
+            user_metadata: {
+              ...authData.session.user.user_metadata,
+              userType: userProfile.userType,
+              roleCategory: userProfile.Roles?.roleCategory
+            }
+          }
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
