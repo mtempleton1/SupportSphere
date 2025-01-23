@@ -55,7 +55,7 @@ serve(async (req) => {
     if (authError || !authData.user) {
       return new Response(
         JSON.stringify({ error: 'Invalid credentials' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
       )
     }
 
@@ -76,7 +76,7 @@ serve(async (req) => {
       await anonClient.auth.signOut()
       return new Response(
         JSON.stringify({ error: 'User profile not found' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
       )
     }
 
@@ -87,8 +87,8 @@ serve(async (req) => {
       // Sign out the user since verification failed
       await anonClient.auth.signOut()
       return new Response(
-        JSON.stringify({ error: 'Invalid account or user type' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+        JSON.stringify({ error: `Invalid account or user type ${userProfile.userType} ${loginType}`  }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
       )
     }
 

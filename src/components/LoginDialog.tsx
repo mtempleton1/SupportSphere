@@ -84,7 +84,7 @@ export const LoginDialog = ({
       if (type === 'staff') {
         console.log("STAFF!")
 
-        const roleCategory = loginData.user.roleCategory;
+        const roleCategory = loginData.session.user.user_metadata.roleCategory;
         console.log(roleCategory);
         if (roleCategory === 'admin' || roleCategory === 'owner') {
           navigate('/admin');
