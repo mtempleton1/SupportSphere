@@ -7,6 +7,20 @@ import { SearchBar } from "../components/SearchBar";
 import { Footer } from "../components/Footer";
 import { ChatWidget } from "../components/ChatWidget";
 import { MessageSquarePlus, UserCircle } from "lucide-react";
+import { createClient } from '@supabase/supabase-js'
+import type { Database } from '../types/supatypes'
+
+// Determine if we're in Vite or Node environment
+const isViteEnvironment = typeof import.meta?.env !== 'undefined'
+
+// Get environment variables based on environment
+const supabaseUrl = isViteEnvironment ? 
+  import.meta.env.VITE_SUPABASE_PROJECT_URL : 
+  process.env.VITE_SUPABASE_PROJECT_URL
+
+const serviceKey = isViteEnvironment ? 
+  import.meta.env.VITE_SUPABASE_SERVICE_KEY : 
+  process.env.SUPABASE_SERVICE_KEY
 
 interface Account {
   accountId: string
@@ -21,6 +35,7 @@ interface Ticket {
   description: string;
   status: string;
   createdAt: string;
+  updatedAt: string;
   requesterId: string;
 }
 
@@ -49,6 +64,70 @@ export function AccountHome() {
   const handleCreateTicket = () => {
     navigate('/tickets/new');
   };
+
+  // Development auto-login
+  useEffect(() => {
+    async function autoLogin() {
+      if (!account || isAuthenticated) return;
+
+      console.log(supabaseUrl)
+      console.log(serviceKey)
+      // Create admin client for elevated access
+      const adminClient = createClient<Database>(supabaseUrl, serviceKey, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false
+        },
+        global: {
+          fetch: fetch as any
+        }
+      })
+
+      try {
+        console.log(account)
+        const { data: plans, error: plansError } = await adminClient
+          .from('Plans')
+          .select()
+        console.log("PLANS")
+        console.log(plans)
+        // Find a staff user in the account
+        const { data: userProfile, error: profileError } = await adminClient
+          .from('UserProfiles')
+          .select('email')
+          .eq('accountId', account.accountId)
+          .eq('userType', 'staff')
+          .limit(1)
+          .single();
+
+        console.log(userProfile)
+        console.log(profileError)
+        if (profileError || !userProfile) throw new Error('No staff user found');
+
+        // const { data: staffUsers, error: staffError } = await adminClient
+        //   .from('UserProfiles')
+        //   .select('email')
+        //   .eq('id', userProfile.userId);
+
+        // if (staffError || !staffUsers?.length) throw new Error('Staff user auth details not found');
+
+        // Log in as the staff user
+        const { error: loginError } = await supabase.auth.signInWithPassword({
+          email: userProfile.email,
+          password: 'Password123!'
+        });
+
+        if (loginError) throw loginError;
+        navigate('/agent');
+      } catch (err) {
+        console.error('Auto-login failed:', err);
+      }
+    }
+
+    // Only run in development
+    if (import.meta.env.DEV) {
+      autoLogin();
+    }
+  }, [account, isAuthenticated]);
 
   // Fetch tickets when authenticated
   useEffect(() => {
@@ -197,11 +276,10 @@ export function AccountHome() {
             )}
           </div>
         </main>
-        {isAuthenticated && (
+        
+        {ticket && (
           <ChatWidget 
             ticket={ticket}
-            comments={comments}
-            loading={ticketLoading}
             defaultOpen={!!ticket}
           />
         )}

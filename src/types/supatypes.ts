@@ -2297,43 +2297,43 @@ export type Database = {
       UserProfiles: {
         Row: {
           accountId: string | null
-          createdAt: string | null
-          isActive: boolean | null
-          isEmailVerified: boolean | null
-          isSuspended: boolean | null
-          lastLoginAt: string | null
+          createdAt: string
+          email: string
+          isActive: boolean
+          isEmailVerified: boolean
+          isSuspended: boolean
           name: string
           organizationId: string | null
           roleId: string | null
-          updatedAt: string | null
+          updatedAt: string
           userId: string
           userType: string
         }
         Insert: {
           accountId?: string | null
-          createdAt?: string | null
-          isActive?: boolean | null
-          isEmailVerified?: boolean | null
-          isSuspended?: boolean | null
-          lastLoginAt?: string | null
+          createdAt?: string
+          email: string
+          isActive?: boolean
+          isEmailVerified?: boolean
+          isSuspended?: boolean
           name: string
           organizationId?: string | null
           roleId?: string | null
-          updatedAt?: string | null
+          updatedAt?: string
           userId: string
           userType: string
         }
         Update: {
           accountId?: string | null
-          createdAt?: string | null
-          isActive?: boolean | null
-          isEmailVerified?: boolean | null
-          isSuspended?: boolean | null
-          lastLoginAt?: string | null
+          createdAt?: string
+          email?: string
+          isActive?: boolean
+          isEmailVerified?: boolean
+          isSuspended?: boolean
           name?: string
           organizationId?: string | null
           roleId?: string | null
-          updatedAt?: string | null
+          updatedAt?: string
           userId?: string
           userType?: string
         }

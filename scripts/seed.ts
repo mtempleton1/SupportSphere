@@ -595,6 +595,7 @@ async function seedCompanyData() {
         ...(authUsers[0] ? [{
           userId: authUsers[0].id,
           name: faker.person.fullName(),
+          email: authUsers[0].email!,
           userType: 'staff' as UserType,
           roleId: createdRoles.find(r => r.roleCategory === 'owner')?.roleId,
           accountId: account.accountId,
@@ -607,6 +608,7 @@ async function seedCompanyData() {
         ...(authUsers[1] ? [{
           userId: authUsers[1].id,
           name: faker.person.fullName(),
+          email: authUsers[1].email!,
           userType: 'staff' as UserType,
           roleId: createdRoles.find(r => r.roleCategory === 'admin')?.roleId,
           accountId: account.accountId,
@@ -619,6 +621,7 @@ async function seedCompanyData() {
         ...authUsers.slice(2, 4).map(user => ({
           userId: user.id,
           name: faker.person.fullName(),
+          email: user.email!,
           userType: 'staff' as UserType,
           roleId: createdRoles.find(r => r.name === 'Senior Agent')?.roleId,
           accountId: account.accountId,
@@ -631,6 +634,7 @@ async function seedCompanyData() {
         ...authUsers.slice(4, 7).map(user => ({
           userId: user.id,
           name: faker.person.fullName(),
+          email: user.email!,
           userType: 'staff' as UserType,
           roleId: createdRoles.find(r => r.name === 'Support Agent')?.roleId,
           accountId: account.accountId,
@@ -643,6 +647,7 @@ async function seedCompanyData() {
         ...authUsers.slice(7, 9).map(user => ({
           userId: user.id,
           name: faker.person.fullName(),
+          email: user.email!,
           userType: 'staff' as UserType,
           roleId: createdRoles.find(r => r.name === 'Light Agent')?.roleId,
           accountId: account.accountId,
@@ -655,6 +660,7 @@ async function seedCompanyData() {
         ...authUsers.slice(9).map(user => ({
           userId: user.id,
           name: faker.person.fullName(),
+          email: user.email!,
           userType: 'end_user' as UserType,
           roleId: null,
           accountId: account.accountId,

@@ -24,10 +24,11 @@ interface Role {
 }
 
 interface UserProfile {
-  userType: string
-  roleId: string
+  id: string
+  email: string
   name: string
-  Roles: Role[]
+  role: RoleCategory
+  avatarUrl?: string
 }
 
 interface Brand {
@@ -50,20 +51,20 @@ interface Ticket {
   assigneeGroupId: string | null
   createdAt: string
   updatedAt: string
-  Brands: Brand
-  Requesters: UserProfile
-  Assignees?: UserProfile
+  brand: Brand
+  requester: UserProfile
+  assignee?: UserProfile
   ticketNumber: number
-  Groups?: {
+  group?: {
     groupId: string
     name: string
   }
-  Channels?: Channel
+  channel?: Channel
   description: string
 }
 
 interface Comment {
-  commentId: string
+  id: string
   content: string
   isPublic: boolean
   createdAt: string
@@ -78,6 +79,8 @@ interface TicketViewProps {
 export function TicketView({ ticketId }: TicketViewProps) {
   const [account, setAccount] = useState<Account | null>(null)
   const [ticket, setTicket] = useState<Ticket | null>(null)
+  const [requester, setRequester] = useState<UserProfile | null>(null)
+  const [assignee, setAssignee] = useState<UserProfile | null>(null)
   const [comments, setComments] = useState<Comment[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -115,7 +118,9 @@ export function TicketView({ ticketId }: TicketViewProps) {
         setAccount(data.account)
         setTicket(data.ticket)
         setComments(data.comments)
-        console.log(data.comments)
+        setAssignee(data.assignee)
+        setRequester(data.requester)
+        console.log(data)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch data')
       } finally {
@@ -125,11 +130,6 @@ export function TicketView({ ticketId }: TicketViewProps) {
 
     fetchTicketData()
   }, [ticketId])
-
-  const truncateDescription = (text: string, maxLength: number = 150) => {
-    if (text.length <= maxLength) return text;
-    return text.slice(0, maxLength) + '...';
-  };
 
   if (loading) return <div>Loading...</div>
   if (error) return <div>Error: {error}</div>
@@ -141,7 +141,7 @@ export function TicketView({ ticketId }: TicketViewProps) {
         <div className="p-4 border-b">
           <div className="flex items-center justify-between mb-4">
             <span className="font-medium">
-              {ticket.Requesters?.name || 'Unknown Requester'}
+              {requester?.name || 'Unknown Requester'}
             </span>
           </div>
           <div className="flex items-center space-x-2 mb-4">
@@ -159,7 +159,7 @@ export function TicketView({ ticketId }: TicketViewProps) {
                 Brand
               </label>
               <select className="w-full p-2 border rounded">
-                <option>{ticket.Brands?.name || 'No Brand'}</option>
+                <option>{ticket.brand?.name || 'No Brand'}</option>
               </select>
             </div>
             <div>
@@ -167,7 +167,7 @@ export function TicketView({ ticketId }: TicketViewProps) {
                 Requester
               </label>
               <select className="w-full p-2 border rounded">
-                <option>{ticket.Requesters?.name || 'Unknown Requester'}</option>
+                <option>{requester?.name || 'Unknown Requester'}</option>
               </select>
             </div>
             <div>
@@ -176,9 +176,9 @@ export function TicketView({ ticketId }: TicketViewProps) {
               </label>
               <select className="w-full p-2 border rounded">
                 <option>
-                  {ticket.Groups?.name && ticket.Assignees?.name 
-                    ? `${ticket.Groups.name}/${ticket.Assignees.name}`
-                    : ticket.Assignees?.name || 'Unassigned'}
+                  {ticket.group?.name && assignee?.name 
+                    ? `${ticket.group.name}/${assignee.name}`
+                    : assignee?.name || 'Unassigned'}
                 </option>
               </select>
             </div>
@@ -188,10 +188,10 @@ export function TicketView({ ticketId }: TicketViewProps) {
       <div className="flex-1 flex flex-col bg-white min-w-0">
         <div className="px-6 py-4 border-b">
           <h1 className="text-xl font-medium mb-1 text-left">
-            Conversation with {ticket.Requesters?.name || 'Unknown Requester'}
+            Conversation with {requester?.name || 'Unknown Requester'}
           </h1>
           <div className="text-sm text-red-500 text-left mb-2">
-            Via {ticket.Channels?.name?.replace(/\s*Channel\s*/i, '') || ticket.Channels?.type?.replace(/_/g, ' ') || 'unknown channel'}
+            Via {ticket.channel?.name?.replace(/\s*Channel\s*/i, '') || ticket.channel?.type?.replace(/_/g, ' ') || 'unknown channel'}
           </div>
           <div 
             className="relative text-sm text-gray-600 text-left cursor-pointer group"
@@ -209,12 +209,18 @@ export function TicketView({ ticketId }: TicketViewProps) {
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
-
-
           {/* Comments */}
           {comments.map((comment) => (
-            <div key={comment.commentId} className="flex space-x-3">
-              <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0" />
+            <div key={`${comment.id}-${comment.createdAt}`} className="flex space-x-3">
+              <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0">
+                {comment.author?.avatarUrl && (
+                  <img 
+                    src={comment.author?.avatarUrl} 
+                    alt={comment.author?.name} 
+                    className="w-full h-full rounded-full object-cover"
+                  />
+                )}
+              </div>
               <div>
                 <div className="flex items-center space-x-2 mb-1">
                   <span className="font-medium">{comment.author?.name}</span>
@@ -266,9 +272,17 @@ export function TicketView({ ticketId }: TicketViewProps) {
         <div className="p-4">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gray-200 rounded-full" />
+              <div className="w-10 h-10 bg-gray-200 rounded-full">
+                {requester?.avatarUrl && (
+                  <img 
+                    src={requester.avatarUrl} 
+                    alt={requester?.name || 'Unknown Requester'} 
+                    className="w-full h-full rounded-full object-cover"
+                  />
+                )}
+              </div>
               <span className="font-medium">
-                {ticket.Requesters?.name || 'Unknown Requester'}
+                {requester?.name || 'Unknown Requester'}
               </span>
             </div>
             <button className="p-1 hover:bg-gray-100 rounded">
@@ -280,13 +294,13 @@ export function TicketView({ ticketId }: TicketViewProps) {
               <label className="block text-sm text-gray-600 mb-1">
                 Email
               </label>
-              <div className="text-blue-600">{ticket.Requesters?.name}@example.com</div>
+              <div className="text-blue-600">{requester?.email}</div>
             </div>
             <div>
               <label className="block text-sm text-gray-600 mb-1">
-                Phone
+                Role
               </label>
-              <div className="text-blue-600">+1 408 294 241</div>
+              <div className="capitalize">{requester?.role?.replace(/_/g, ' ')}</div>
             </div>
             <div>
               <label className="block text-sm text-gray-600 mb-1">
