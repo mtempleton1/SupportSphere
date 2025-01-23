@@ -37,6 +37,11 @@ interface SupabaseError {
 interface CreateTicketResponse {
   data: string | null  // ticketId if successful, null if error
   error: SupabaseError | null
+  session?: {
+    access_token: string
+    refresh_token: string
+    expires_in: number
+  }
 }
 
 const TICKET_REASONS = [
@@ -184,6 +189,19 @@ export function TicketCreate() {
       }
 
       if (data) {
+        // If we got a session back, set it
+        if (response.data.session) {
+          await supabase.auth.setSession({
+            access_token: response.data.session.access_token,
+            refresh_token: response.data.session.refresh_token
+          });
+          // Update user email state
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user?.email) {
+            setUserEmail(user.email);
+          }
+        }
+
         // Reset form
         setFormState({
           email: userEmail || '',
@@ -193,7 +211,7 @@ export function TicketCreate() {
         });
 
         // Show success message
-        alert(`Ticket #${data} has been created successfully!`);
+        alert('Ticket successfully created');
         navigate('/');
       }
       
