@@ -111,18 +111,18 @@ CREATE TABLE "Organizations" (
 
 -- Create UserProfile Table that extends auth.users
 CREATE TABLE "UserProfiles" (
-    "userId" UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    "name" VARCHAR(255) NOT NULL,
+    "userId" UUID PRIMARY KEY REFERENCES auth.users(id),
+    "name" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
     "userType" VARCHAR(50) NOT NULL CHECK ("userType" IN ('staff', 'end_user')),
     "roleId" UUID REFERENCES "Roles"("roleId"),
     "accountId" UUID REFERENCES "Accounts"("accountId") ON DELETE CASCADE,
     "organizationId" UUID REFERENCES "Organizations"("organizationId"),
-    "isActive" BOOLEAN DEFAULT TRUE,
-    "isSuspended" BOOLEAN DEFAULT FALSE,
-    "isEmailVerified" BOOLEAN DEFAULT FALSE,
-    "lastLoginAt" TIMESTAMP,
-    "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "isSuspended" BOOLEAN NOT NULL DEFAULT false,
+    "isEmailVerified" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT "unique_email_per_account" UNIQUE("userId", "accountId")
 );
 

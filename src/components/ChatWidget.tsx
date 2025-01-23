@@ -1,5 +1,17 @@
-import { useState } from 'react';
-import { MessageCircle, X, Loader2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { MessageCircle, X } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+
+interface Comment {
+  commentId: string;
+  content: string;
+  isPublic: boolean;
+  createdAt: string;
+  authorId: string;
+  author: {
+    name: string;
+  };
+}
 
 interface Ticket {
   ticketId: string;
@@ -7,125 +19,145 @@ interface Ticket {
   description: string;
   status: string;
   createdAt: string;
+  updatedAt: string;
   requesterId: string;
 }
 
-interface TicketComment {
-  commentId: string;
-  content: string;
-  isPublic: boolean;
-  createdAt: string;
-  authorId: string;
-}
-
 interface ChatWidgetProps {
-  ticket: Ticket | null;
-  comments: TicketComment[];
-  loading?: boolean;
+  ticket?: Ticket | null;
   defaultOpen?: boolean;
 }
 
-export const ChatWidget = ({ ticket, comments, loading = false, defaultOpen = false }: ChatWidgetProps) => {
+export const ChatWidget = ({ ticket, defaultOpen = false }: ChatWidgetProps) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
+  useEffect(() => {
+    if (isOpen && ticket?.ticketId) {
+      fetchTicketData();
+    }
+  }, [isOpen, ticket?.ticketId]);
+
+  const fetchTicketData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setError('No active session');
+        return;
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_PROJECT_URL}/functions/v1/fetch-ticket?ticketId=${ticket?.ticketId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+      console.log(response)
+      const { data, error: apiError } = await response.json();
+      console.log(data)
+      console.log(apiError)
+      if (apiError) {
+        throw new Error(apiError);
+      }
+
+      if (!data) {
+        throw new Error('No data returned from API');
+      }
+
+      setComments(data.comments);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch data');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  if (!isOpen) {
-    return (
-      <button
-        onClick={() => setIsOpen(true)}
-        className="absolute bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 flex items-center justify-center transition-all duration-200"
-      >
-        <MessageCircle className="w-6 h-6" />
-      </button>
-    );
+  if (!ticket) {
+    return null;
   }
 
   return (
-    <div className="absolute bottom-6 right-6 w-96 h-[600px] bg-white rounded-lg shadow-xl flex flex-col">
-      {/* Header */}
-      <div className="p-4 border-b flex justify-between items-center bg-blue-600 text-white rounded-t-lg">
-        <h3 className="font-semibold">Support Chat</h3>
-        <button
-          onClick={() => setIsOpen(false)}
-          className="text-white hover:text-gray-200"
-        >
-          <X className="w-5 h-5" />
-        </button>
-      </div>
-
-      {/* Chat Content */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {loading ? (
-          <div className="flex justify-center items-center h-full">
-            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+    <div className="fixed bottom-4 right-4 z-50">
+      {isOpen ? (
+        <div className="bg-white rounded-lg shadow-lg w-96 flex flex-col" style={{ height: '600px' }}>
+          {/* Header */}
+          <div className="p-4 border-b flex justify-between items-center">
+            <h2 className="font-medium">{ticket.subject}</h2>
+            <button onClick={() => setIsOpen(false)} className="text-gray-500 hover:text-gray-700">
+              <X size={20} />
+            </button>
           </div>
-        ) : ticket ? (
-          <>
-            {/* Ticket Subject */}
-            <div className="bg-blue-50 p-3 rounded-lg">
-              <h4 className="font-semibold text-blue-800">{ticket.subject}</h4>
-              <p className="text-xs text-gray-500 mt-1">
-                {formatDate(ticket.createdAt)}
-              </p>
-            </div>
 
-            {/* Initial Description */}
-            <div className="flex justify-end">
-              <div className="bg-blue-600 text-white p-3 rounded-lg max-w-[80%]">
-                <p>{ticket.description}</p>
+          {/* Chat Messages */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {/* Initial Ticket Description */}
+            <div className="flex space-x-3">
+              <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0" />
+              <div>
+                <div className="bg-blue-50 rounded-lg p-3">
+                  <p>{ticket.description}</p>
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  {new Date(ticket.createdAt).toLocaleString()}
+                </div>
               </div>
             </div>
 
             {/* Comments */}
-            {comments.map((comment) => (
-              <div
-                key={comment.commentId}
-                className={`flex ${
-                  comment.authorId === ticket.requesterId ? 'justify-end' : 'justify-start'
-                }`}
-              >
-                <div
-                  className={`p-3 rounded-lg max-w-[80%] ${
-                    comment.authorId === ticket.requesterId
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-800'
-                  }`}
-                >
-                  <p>{comment.content}</p>
-                  <p className="text-xs opacity-70 mt-1">
-                    {formatDate(comment.createdAt)}
-                  </p>
+            {loading ? (
+              <div className="text-center py-4">Loading comments...</div>
+            ) : error ? (
+              <div className="text-center text-red-500 py-4">{error}</div>
+            ) : (
+              comments.map((comment) => (
+                <div key={comment.commentId} className="flex space-x-3">
+                  <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0" />
+                  <div>
+                    <div className="flex items-center space-x-2 mb-1">
+                      <span className="font-medium">{comment.author?.name}</span>
+                    </div>
+                    <div className={`rounded-lg p-3 ${comment.isPublic ? 'bg-blue-50' : 'bg-gray-100'}`}>
+                      <p>{comment.content}</p>
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {new Date(comment.createdAt).toLocaleString()}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </>
-        ) : (
-          <div className="flex items-center justify-center h-full text-gray-500">
-            No open tickets
+              ))
+            )}
           </div>
-        )}
-      </div>
 
-      {/* Input Area - Disabled for now */}
-      <div className="p-4 border-t">
-        <div className="flex items-center space-x-2">
-          <input
-            type="text"
-            disabled
-            placeholder="Coming soon..."
-            className="flex-1 p-2 border rounded-md bg-gray-50"
-          />
-          <button
-            disabled
-            className="px-4 py-2 bg-gray-100 text-gray-400 rounded-md"
-          >
-            Send
-          </button>
+          {/* Input Area */}
+          <div className="border-t p-4">
+            <textarea
+              placeholder="Write a message..."
+              className="w-full p-2 border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+              rows={3}
+            />
+            <div className="mt-2 flex justify-end">
+              <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                Send
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      ) : (
+        <button
+          onClick={() => setIsOpen(true)}
+          className="bg-blue-600 text-white rounded-full p-3 shadow-lg hover:bg-blue-700"
+        >
+          <MessageCircle size={24} />
+        </button>
+      )}
     </div>
   );
 }; 

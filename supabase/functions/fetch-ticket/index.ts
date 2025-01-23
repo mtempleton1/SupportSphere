@@ -8,6 +8,13 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+interface UserData {
+  userId: string;
+  name: string;
+  userType: string;
+  email: string;
+}
+
 serve(async (req) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {
@@ -24,7 +31,7 @@ serve(async (req) => {
       throw new Error('Missing environment variables')
     }
 
-    // Initialize Supabase admin client
+    // Initialize Supabase admin client for UserProfiles access
     const adminClient = createClient(supabaseUrl, supabaseServiceKey)
 
     // Get auth header
@@ -36,9 +43,22 @@ serve(async (req) => {
     // Extract the JWT token
     const token = authHeader.replace('Bearer ', '')
     
+    // Create user client with the token
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+        detectSessionInUrl: false
+      },
+      global: {
+        headers: {
+          authorization: `Bearer ${token}`
+        }
+      }
+    })
+
     // Verify the token and get user
     const { data: { user }, error: verifyError } = await adminClient.auth.getUser(token)
-    
     if (verifyError || !user) {
       throw new Error('Unauthorized')
     }
@@ -51,7 +71,7 @@ serve(async (req) => {
       throw new Error('Missing ticketId parameter')
     }
 
-    // Get the user's profile to get their account ID
+    // Get the user's profile to get their account ID and user type
     const { data: userProfile, error: profileError } = await adminClient
       .from('UserProfiles')
       .select('accountId, userType, roleId, Roles(roleCategory)')
@@ -62,13 +82,8 @@ serve(async (req) => {
       throw new Error('User profile not found')
     }
 
-    // Verify user is staff
-    if (userProfile.userType !== 'staff') {
-      throw new Error('Unauthorized - Staff access required')
-    }
-
-    // Get account info
-    const { data: account, error: accountError } = await adminClient
+    // Get account info using user client
+    const { data: account, error: accountError } = await userClient
       .from('Accounts')
       .select('accountId, name, subdomain, endUserAccountCreationType')
       .eq('accountId', userProfile.accountId)
@@ -78,67 +93,163 @@ serve(async (req) => {
       throw accountError
     }
 
-    // Fetch ticket with all related data
-    const { data: ticket, error: ticketError } = await adminClient
-      .from('Tickets')
-      .select(`
-        *,
-        Brands (
-          brandId,
-          name
-        ),
-        Requesters:UserProfiles!Tickets_requesterId_fkey (
-          userId,
-          name,
-          userType
-        ),
-        Assignees:UserProfiles!Tickets_assigneeId_fkey (
-          userId,
-          name,
-          userType
-        ),
-        Groups (
-          groupId,
-          name
-        ),
-        Channels (
-          type,
-          name
-        )
-      `)
-      .eq('ticketId', ticketId)
-      .single()
+    let ticketData;
+    let commentsData;
+    let requesterData: UserData | null = null;
+    let assigneeData: UserData | null = null;
 
-    if (ticketError) {
-      throw ticketError
+    if (userProfile.userType === 'staff') {
+      // Staff user - fetch ticket data without UserProfiles joins
+      const { data: ticket, error: ticketError } = await userClient
+        .from('Tickets')
+        .select(`
+          *,
+          Brands (
+            brandId,
+            name
+          ),
+          Groups (
+            groupId,
+            name
+          ),
+          Channels (
+            type,
+            name
+          )
+        `)
+        .eq('ticketId', ticketId)
+        .single()
+
+      if (ticketError) {
+        throw ticketError
+      }
+
+      ticketData = ticket;
+      // Fetch requester data using adminClient
+      if (ticket.requesterId) {
+        // Get UserProfile data
+        const { data: requesterProfile, error: requesterProfileError } = await adminClient
+          .from('UserProfiles')
+          .select('userId, name, userType')
+          .eq('userId', ticket.requesterId)
+          .single()
+        // Get email from auth user if it matches the requester
+        // const requesterEmail = ticket.requesterId === user.id ? user.email : (
+        //   // Otherwise fetch the auth user
+        //   (await adminClient.auth.getUser(ticket.requesterId)).data.user?.email
+        // )
+
+        if (!requesterProfileError && requesterProfile) {
+          requesterData = {
+            userId: requesterProfile.userId,
+            name: requesterProfile.name,
+            userType: requesterProfile.userType,
+            email: requesterProfile.email
+          }
+        }
+      }
+
+      // Fetch assignee data using adminClient if assigned
+      if (ticket.assigneeId) {
+        // Get UserProfile data
+        const { data: assigneeProfile, error: assigneeProfileError } = await adminClient
+          .from('UserProfiles')
+          .select('userId, name, userType')
+          .eq('userId', ticket.assigneeId)
+          .single()
+
+
+
+        if (!assigneeProfileError && assigneeProfile) {
+          assigneeData = {
+            userId: assigneeProfile.userId,
+            name: assigneeProfile.name,
+            userType: assigneeProfile.userType,
+            email: assigneeProfile.email
+          }
+        }
+      }
+
+      // Fetch comments with author info
+      const { data: comments, error: commentsError } = await userClient
+        .from('TicketComments')
+        .select(`
+          *,
+          author:UserProfiles!TicketComments_authorId_fkey (
+            name
+          )
+        `)
+        .eq('ticketId', ticketId)
+        .order('createdAt', { ascending: true })
+
+      if (commentsError) {
+        throw commentsError
+      }
+
+      commentsData = comments;
+    } else {
+      // End user - fetch basic ticket data and public comments only
+      const { data: ticket, error: ticketError } = await userClient
+        .from('Tickets')
+        .select(`
+          ticketId,
+          subject,
+          description,
+          status,
+          createdAt,
+          updatedAt
+        `)
+        .eq('ticketId', ticketId)
+        .eq('requesterId', user.id) // Ensure they can only see their own tickets
+        .single()
+
+      if (ticketError) {
+        throw ticketError
+      }
+
+      ticketData = ticket;
+
+      // Fetch only public comments
+      const { data: comments, error: commentsError } = await userClient
+        .from('TicketComments')
+        .select(`
+          commentId,
+          content,
+          isPublic,
+          createdAt,
+          authorId,
+          author:UserProfiles!TicketComments_authorId_fkey (
+            name
+          )
+        `)
+        .eq('ticketId', ticketId)
+        .eq('isPublic', true)
+        .order('createdAt', { ascending: true })
+
+      if (commentsError) {
+        throw commentsError
+      }
+
+      commentsData = comments;
     }
 
-    // Fetch comments
-    const { data: comments, error: commentsError } = await adminClient
-      .from('TicketComments')
-      .select(`
-        *,
-        author:UserProfiles!TicketComments_authorId_fkey (
-          userId,
-          name,
-          userType
-        )
-      `)
-      .eq('ticketId', ticketId)
-      .order('createdAt', { ascending: true })
-
-    if (commentsError) {
-      throw commentsError
+    // Return response with additional user data for staff
+    const responseData = {
+      account,
+      ticket: ticketData,
+      comments: commentsData
     }
 
-    // Return the data
+    if (userProfile.userType === 'staff') {
+      Object.assign(responseData, {
+        requester: requesterData,
+        assignee: assigneeData
+      })
+    }
+
     return new Response(
       JSON.stringify({
-        data: {
-          account,
-          ticket,
-          comments
-        },
+        data: responseData,
         error: null
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
@@ -146,7 +257,6 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error in fetch-ticket function:', error)
-    
     return new Response(
       JSON.stringify({
         data: null,

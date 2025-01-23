@@ -76,6 +76,7 @@ serve(async (req) => {
       `)
       .order('updatedAt', { ascending: false })
 
+    console.log(ticketsData)
     if (ticketsError) {
       throw ticketsError
     }
@@ -85,16 +86,17 @@ serve(async (req) => {
       ...ticketsData.map(t => t.requesterId),
       ...ticketsData.map(t => t.assigneeId).filter(Boolean)
     ])
-
+    console.log(userIds)
     // Get all unique group IDs
     const groupIds = new Set(ticketsData.map(t => t.assigneeGroupId).filter(Boolean))
+    console.log(groupIds)
 
     // Fetch all relevant users using admin client
     const { data: usersData, error: usersError } = await adminClient
       .from('UserProfiles')
       .select('userId, name')
       .in('userId', Array.from(userIds))
-
+    console.log(usersData)
     if (usersError) {
       throw usersError
     }
@@ -104,7 +106,7 @@ serve(async (req) => {
       .from('Groups')
       .select('groupId, name')
       .in('groupId', Array.from(groupIds))
-
+    console.log(groupsData)
     if (groupsError) {
       throw groupsError
     }
@@ -112,7 +114,8 @@ serve(async (req) => {
     // Create lookup maps
     const userMap = new Map(usersData?.map(u => [u.userId, { userId: u.userId, name: u.name }]))
     const groupMap = new Map(groupsData?.map(g => [g.groupId, { groupId: g.groupId, name: g.name }]))
-
+    console.log(userMap)
+    console.log(groupMap)
     // Transform the tickets data
     const transformedTickets = ticketsData.map(ticket => ({
       ...ticket,
@@ -120,7 +123,7 @@ serve(async (req) => {
       assignee: ticket.assigneeId ? userMap.get(ticket.assigneeId) : null,
       assigneeGroup: ticket.assigneeGroupId ? groupMap.get(ticket.assigneeGroupId) : null,
     }))
-
+    console.log(transformedTickets)
     // Return the transformed data
     return new Response(
       JSON.stringify({
