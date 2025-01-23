@@ -1,7 +1,20 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { X, ArrowRight } from "lucide-react";
+import { X } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { createClient } from '@supabase/supabase-js';
+
+// Determine if we're in Vite or Node environment
+const isViteEnvironment = typeof import.meta?.env !== 'undefined';
+
+// Get environment variables based on environment
+const supabaseUrl = isViteEnvironment ? 
+  import.meta.env.VITE_SUPABASE_PROJECT_URL : 
+  process.env.VITE_SUPABASE_PROJECT_URL;
+
+const serviceKey = isViteEnvironment ? 
+  import.meta.env.VITE_SUPABASE_SERVICE_KEY : 
+  process.env.SUPABASE_SERVICE_KEY;
 
 interface UserProfile {
   userType: 'staff' | 'end_user';
@@ -39,9 +52,71 @@ export const LoginDialog = ({
       setFullName('');
       setError(null);
     }
+    
+
   }, [isOpen, type]);
 
   if (!isOpen) return null;
+
+  const handleDevLogin = async () => {
+    const hostname = window.location.hostname;
+    const subdomain = hostname.split('.')[0];
+    const { data: account, error: accountError } = await supabase
+      .from('Accounts')
+      .select('accountId')
+      .eq('subdomain', subdomain)
+      .single();
+
+    if (accountError) throw accountError;
+    setLoading(true);
+    setError(null);
+    try {
+      // Create admin client for elevated access
+      const adminClient = createClient(supabaseUrl, serviceKey, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false
+        }
+      });
+
+      // Find a user of the appropriate type in the account
+      const { data: userProfile, error: profileError } = await adminClient
+        .from('UserProfiles')
+        .select('email')
+        .eq('accountId', account.accountId)
+        .eq('userType', type === 'staff' ? 'staff' : 'end_user')
+        .limit(1)
+        .single();
+
+      if (profileError || !userProfile) {
+        throw new Error(`No ${type} user found`);
+      }
+
+      // Log in as the user
+      const { error: loginError } = await supabase.auth.signInWithPassword({
+        email: userProfile.email,
+        password: 'Password123!'
+      });
+
+      if (loginError) throw loginError;
+
+      // Handle navigation based on user type
+      if (type === 'staff') {
+        navigate('/agent');
+      } else {
+        navigate('/user');
+      }
+      onClose();
+    } catch (err) {
+      console.error('Auto-login failed:', err);
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // In development mode, use auto-login
+  handleDevLogin();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,6 +135,7 @@ export const LoginDialog = ({
 
       if (accountError) throw accountError;
 
+      
       // Call the login edge function
       const { data: loginData, error: loginError } = await supabase.functions.invoke('login', {
         body: {
@@ -69,7 +145,7 @@ export const LoginDialog = ({
           loginType: type
         }
       });
-      console.log(loginData);
+
       if (loginError) throw loginError;
 
       // Set the session in the client
@@ -82,10 +158,7 @@ export const LoginDialog = ({
 
       // Handle navigation based on user type and role
       if (type === 'staff') {
-        console.log("STAFF!")
-
         const roleCategory = loginData.session.user.user_metadata.roleCategory;
-        console.log(roleCategory);
         if (roleCategory === 'admin' || roleCategory === 'owner') {
           navigate('/admin');
         } else if (roleCategory === 'agent') {

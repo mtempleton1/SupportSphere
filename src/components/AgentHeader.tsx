@@ -19,6 +19,7 @@ interface AgentHeaderProps {
 
 export function AgentHeader({ variant = 'conversation' }: AgentHeaderProps) {
   const [showDropdown, setShowDropdown] = useState(false);
+  const [userName, setUserName] = useState<string>('');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -35,6 +36,25 @@ export function AgentHeader({ variant = 'conversation' }: AgentHeaderProps) {
     };
   }, []);
 
+  useEffect(() => {
+    async function fetchUserProfile() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('UserProfiles')
+          .select('name')
+          .eq('userId', user.id)
+          .single();
+        
+        if (profile) {
+          setUserName(profile.name);
+        }
+      }
+    }
+
+    fetchUserProfile();
+  }, []);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setShowDropdown(false);
@@ -44,9 +64,9 @@ export function AgentHeader({ variant = 'conversation' }: AgentHeaderProps) {
   const renderDashboardLeft = () => (
     <div className="flex items-center">
       <h1 className="text-lg font-medium mr-8">Dashboard</h1>
-      <button className="text-sm text-gray-600 mr-4">
-        Explore Zendesk Support
-      </button>
+      <span className="text-sm text-gray-600 mr-4">
+        {userName ? userName : 'Loading...'}
+      </span>
     </div>
   );
 
@@ -89,7 +109,7 @@ export function AgentHeader({ variant = 'conversation' }: AgentHeaderProps) {
             className="flex items-center space-x-2"
           >
             <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white">
-              <User size={20} />
+              {userName ? userName[0].toUpperCase() : <User size={20} />}
             </div>
             <ChevronDown size={16} />
           </button>

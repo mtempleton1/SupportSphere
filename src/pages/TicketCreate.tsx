@@ -95,10 +95,12 @@ export function TicketCreate() {
 
         if (accountError) throw accountError
         setAccount(account)
+        const { data: { session } } = await supabase.auth.getSession()
+        setUserEmail(session?.user?.email || null);
 
         // If account type is 'sign_up', check authentication
         if (account.endUserAccountCreationType === 'sign_up') {
-          const { data: { session } } = await supabase.auth.getSession()
+          
           if (!session) {
             // Redirect if not authenticated
             navigate('/')
@@ -123,11 +125,13 @@ export function TicketCreate() {
   const validateForm = (): boolean => {
     const errors: FormErrors = {};
 
-    // Email validation
-    if (!formState.email) {
-      errors.email = 'Email is required';
-    } else if (!isValidEmail(formState.email)) {
-      errors.email = 'Please enter a valid email address';
+    // Email validation only if user is not authenticated
+    if (!userEmail) {
+      if (!formState.email) {
+        errors.email = 'Email is required';
+      } else if (!isValidEmail(formState.email)) {
+        errors.email = 'Please enter a valid email address';
+      }
     }
 
     // Reason validation
@@ -160,7 +164,7 @@ export function TicketCreate() {
 
       const response = await supabase.functions.invoke<CreateTicketResponse>('create-ticket', {
         body: {
-          email: formState.email,
+          email: userEmail || formState.email, // Use userEmail if available, otherwise use form email
           reason: formState.reason === 'Other' ? formState.customSubject : formState.reason,
           content: formState.content,
           channelType: 'help_center'
@@ -239,8 +243,7 @@ export function TicketCreate() {
   if (!account) return <div>Account not found</div>
 
   const isFormValid = 
-    formState.email && 
-    isValidEmail(formState.email) && 
+    (userEmail || (formState.email && isValidEmail(formState.email))) && 
     formState.reason && 
     (formState.reason !== 'Other' || formState.customSubject.trim()) && 
     formState.content.trim();
@@ -261,8 +264,8 @@ export function TicketCreate() {
             Submit a Support Request
           </h1>
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Email field - shown if user is not authenticated or account type is submit_ticket */}
-            {(!userEmail || account.endUserAccountCreationType === 'submit_ticket') && (
+            {/* Email field - shown only if user is not authenticated */}
+            {!userEmail && (
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
                   Email Address
@@ -277,7 +280,6 @@ export function TicketCreate() {
                     formErrors.email ? 'border-red-500' : 'border-gray-300'
                   } rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500`}
                   placeholder="Enter your email address"
-                  disabled={!!userEmail}
                 />
                 {formErrors.email && (
                   <p className="mt-1 text-sm text-red-600">{formErrors.email}</p>
