@@ -24,13 +24,11 @@ serve(async (req) => {
       throw new Error('Missing environment variables')
     }
 
-    // Initialize Supabase clients - one with service role for admin access
+    // Initialize Supabase admin client for UserProfiles access
     const adminClient = createClient(supabaseUrl, supabaseServiceKey)
 
-    // Get auth header to check if user is authenticated
+    // Get auth header
     const authHeader = req.headers.get('authorization')
-    console.log('Auth header received:', authHeader)
-
     if (!authHeader) {
       throw new Error('No authorization header')
     }
@@ -38,17 +36,27 @@ serve(async (req) => {
     // Extract the JWT token
     const token = authHeader.replace('Bearer ', '')
     
-    // Create admin client to verify the token
+    // Create user client with the token
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+        detectSessionInUrl: false
+      },
+      global: {
+        headers: {
+          authorization: `Bearer ${token}`
+        }
+      }
+    })
+
+    // Verify the token and get user
     const { data: { user }, error: verifyError } = await adminClient.auth.getUser(token)
-    console.log('User data:', user)
-    console.log('Verify error:', verifyError)
-    
     if (verifyError || !user) {
-      console.log('Authorization failed:', { verifyError, user })
       throw new Error('Unauthorized')
     }
 
-    // Get the user's profile to get their account ID
+    // Get the user's profile using admin client
     const { data: userProfile, error: profileError } = await adminClient
       .from('UserProfiles')
       .select('accountId')
@@ -59,14 +67,13 @@ serve(async (req) => {
       throw new Error('User profile not found')
     }
 
-    // Fetch tickets for the account with related data using user client
-    const { data: ticketsData, error: ticketsError } = await adminClient
+    // Fetch tickets using user client (this will respect RLS policies)
+    const { data: ticketsData, error: ticketsError } = await userClient
       .from('Tickets')
       .select(`
         *,
         readStatus:TicketReadStatus(lastReadAt)
       `)
-      .eq('accountId', userProfile.accountId)
       .order('updatedAt', { ascending: false })
 
     if (ticketsError) {
@@ -82,7 +89,7 @@ serve(async (req) => {
     // Get all unique group IDs
     const groupIds = new Set(ticketsData.map(t => t.assigneeGroupId).filter(Boolean))
 
-    // Fetch all relevant users using admin client to bypass RLS
+    // Fetch all relevant users using admin client
     const { data: usersData, error: usersError } = await adminClient
       .from('UserProfiles')
       .select('userId, name')
@@ -92,8 +99,8 @@ serve(async (req) => {
       throw usersError
     }
 
-    // Fetch all relevant groups
-    const { data: groupsData, error: groupsError } = await adminClient
+    // Fetch all relevant groups using user client
+    const { data: groupsData, error: groupsError } = await userClient
       .from('Groups')
       .select('groupId, name')
       .in('groupId', Array.from(groupIds))

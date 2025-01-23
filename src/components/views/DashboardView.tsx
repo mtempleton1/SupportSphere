@@ -80,13 +80,12 @@ export function DashboardView({ onTicketSelect }: DashboardViewProps) {
             'Content-Type': 'application/json'
           }
         });
-        console.log(response)
         const { data: transformedTickets, error } = await response.json();
 
         if (error) {
           throw new Error(error);
         }
-
+        console.log(transformedTickets)
         // Organize tickets into sections
         const sections: TicketSections = {
           requireAction: [],

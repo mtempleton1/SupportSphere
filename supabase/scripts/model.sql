@@ -2004,3 +2004,350 @@ ON "Organizations" FOR DELETE
 TO authenticated
 USING (true);
 
+
+-- -- Enable RLS on Tickets table if not already enabled
+
+-- -- Create a function to check if user is staff in the same account
+-- CREATE OR REPLACE FUNCTION is_staff_user_in_account(ticket_account_id UUID)
+-- RETURNS BOOLEAN
+-- LANGUAGE plpgsql
+-- SECURITY DEFINER
+-- AS $$
+-- BEGIN
+--   RETURN EXISTS (
+--     SELECT 1 FROM "UserProfiles"
+--     WHERE "userId" = auth.uid()
+--     AND "userType" = 'staff'
+--     AND "accountId" = ticket_account_id
+--   );
+-- END;
+-- $$;
+
+-- -- Revoke all column access first
+-- REVOKE SELECT ON "Tickets" FROM authenticated;
+
+-- -- Grant access to specific columns based on user type
+-- GRANT SELECT (
+--   "ticketId", 
+--   "accountId", 
+--   "brandId", 
+--   "requesterId", 
+--   "assigneeId", 
+--   "subject", 
+--   "description", 
+--   "status", 
+--   "type", 
+--   "createdAt", 
+--   "updatedAt", 
+--   "solvedAt", 
+--   "closedAt"
+-- ) ON "Tickets" TO authenticated;
+
+-- -- Grant additional column access to staff users using a policy that respects account boundaries
+-- CREATE POLICY "Staff can view all ticket columns in their account"
+-- ON "Tickets"
+-- FOR SELECT
+-- TO authenticated
+-- USING (is_staff_user_in_account("accountId"));
+
+-- -- Enable RLS on Tickets table if not already enabled
+
+
+-- Create SELECT policy for TicketComments
+CREATE POLICY "Staff and requesters can view ticket comments"
+ON "TicketComments" FOR SELECT
+TO authenticated
+USING (
+    -- Staff members can view all comments in their account
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Tickets" t ON "TicketComments"."ticketId" = t."ticketId"
+        WHERE u."userId" = auth.uid()
+        AND u."userType" = 'staff'
+        AND u."accountId" = t."accountId"
+    )
+    OR
+    -- End users can view public comments for their tickets
+    EXISTS (
+        SELECT 1 FROM "Tickets" t
+        WHERE t."ticketId" = "TicketComments"."ticketId"
+        AND t."requesterId" = auth.uid()
+        AND "TicketComments"."isPublic"
+    )
+);
+
+-- Create INSERT policy for TicketComments
+CREATE POLICY "Staff and requesters can create ticket comments"
+ON "TicketComments" FOR INSERT
+TO authenticated
+WITH CHECK (
+    -- Staff members can create comments for tickets in their account
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Tickets" t ON "TicketComments"."ticketId" = t."ticketId"
+        WHERE u."userId" = auth.uid()
+        AND u."userType" = 'staff'
+        AND u."accountId" = t."accountId"
+    )
+    OR
+    -- End users can create comments for their tickets
+    EXISTS (
+        SELECT 1 FROM "Tickets" t
+        WHERE t."ticketId" = "TicketComments"."ticketId"
+        AND t."requesterId" = auth.uid()
+        AND "TicketComments"."isPublic" = true  -- End users can only create public comments
+    )
+);
+
+-- FULL PERMISSIONS
+
+-- Enable RLS for UserTags
+ALTER TABLE "UserTags" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for UserTags - Full access for all authenticated users
+CREATE POLICY "Full access to UserTags"
+ON "UserTags" FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Enable RLS for UserGroups
+ALTER TABLE "UserGroups" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for UserGroups - Full access for all authenticated users
+CREATE POLICY "Full access to UserGroups"
+ON "UserGroups" FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Enable RLS for TicketAttachments
+ALTER TABLE "TicketAttachments" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for TicketAttachments - Full access for all authenticated users
+CREATE POLICY "Full access to TicketAttachments"
+ON "TicketAttachments" FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Enable RLS for TicketArticles
+ALTER TABLE "TicketArticles" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for TicketArticles - Full access for all authenticated users
+CREATE POLICY "Full access to TicketArticles"
+ON "TicketArticles" FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Enable RLS for RolePermissions
+ALTER TABLE "RolePermissions" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for RolePermissions - Full access for all authenticated users
+CREATE POLICY "Full access to RolePermissions"
+ON "RolePermissions" FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Enable RLS for Products
+ALTER TABLE "Products" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for Products - Full access for all authenticated users
+CREATE POLICY "Full access to Products"
+ON "Products" FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Enable RLS for PlanFeatures
+ALTER TABLE "PlanFeatures" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for PlanFeatures - Full access for all authenticated users
+CREATE POLICY "Full access to PlanFeatures"
+ON "PlanFeatures" FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Enable RLS for OrganizationTags
+ALTER TABLE "OrganizationTags" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for OrganizationTags - Full access for all authenticated users
+CREATE POLICY "Full access to OrganizationTags"
+ON "OrganizationTags" FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Enable RLS for OrganizationDomains
+ALTER TABLE "OrganizationDomains" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for OrganizationDomains - Full access for all authenticated users
+CREATE POLICY "Full access to OrganizationDomains"
+ON "OrganizationDomains" FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Enable RLS for MacroUsageStats
+ALTER TABLE "MacroUsageStats" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for MacroUsageStats - Full access for all authenticated users
+CREATE POLICY "Full access to MacroUsageStats"
+ON "MacroUsageStats" FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Enable RLS for MacroTicketEvents
+ALTER TABLE "MacroTicketEvents" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for MacroTicketEvents - Full access for all authenticated users
+CREATE POLICY "Full access to MacroTicketEvents"
+ON "MacroTicketEvents" FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Enable RLS for MacroCategories
+ALTER TABLE "MacroCategories" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for MacroCategories - Full access for all authenticated users
+CREATE POLICY "Full access to MacroCategories"
+ON "MacroCategories" FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Enable RLS for MacroActions
+ALTER TABLE "MacroActions" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for MacroActions - Full access for all authenticated users
+CREATE POLICY "Full access to MacroActions"
+ON "MacroActions" FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Enable RLS for GroupOrganizationMapping
+ALTER TABLE "GroupOrganizationMapping" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for GroupOrganizationMapping - Full access for all authenticated users
+CREATE POLICY "Full access to GroupOrganizationMapping"
+ON "GroupOrganizationMapping" FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Enable RLS for CommentAttachments
+ALTER TABLE "CommentAttachments" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for CommentAttachments - Full access for all authenticated users
+CREATE POLICY "Full access to CommentAttachments"
+ON "CommentAttachments" FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Enable RLS for ChannelVoice
+ALTER TABLE "ChannelVoice" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for ChannelVoice - Full access for all authenticated users
+CREATE POLICY "Full access to ChannelVoice"
+ON "ChannelVoice" FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Enable RLS for ChannelMessaging
+ALTER TABLE "ChannelMessaging" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for ChannelMessaging - Full access for all authenticated users
+CREATE POLICY "Full access to ChannelMessaging"
+ON "ChannelMessaging" FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Enable RLS for ChannelInbox
+ALTER TABLE "ChannelInbox" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for ChannelInbox - Full access for all authenticated users
+CREATE POLICY "Full access to ChannelInbox"
+ON "ChannelInbox" FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Enable RLS for BrandAgents
+ALTER TABLE "BrandAgents" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for BrandAgents - Full access for all authenticated users
+CREATE POLICY "Full access to BrandAgents"
+ON "BrandAgents" FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Enable RLS for AutomaticTagRules
+ALTER TABLE "AutomaticTagRules" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for AutomaticTagRules - Full access for all authenticated users
+CREATE POLICY "Full access to AutomaticTagRules"
+ON "AutomaticTagRules" FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Enable RLS for Attachments
+ALTER TABLE "Attachments" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for Attachments - Full access for all authenticated users
+CREATE POLICY "Full access to Attachments"
+ON "Attachments" FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Enable RLS for AccountAddOns
+ALTER TABLE "AccountAddOns" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for AccountAddOns - Full access for all authenticated users
+CREATE POLICY "Full access to AccountAddOns"
+ON "AccountAddOns" FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Enable RLS for CommentReadStatus
+ALTER TABLE "CommentReadStatus" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for CommentReadStatus - Full access for all authenticated users
+CREATE POLICY "Full access to CommentReadStatus"
+ON "CommentReadStatus" FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Enable RLS for CustomFields
+ALTER TABLE "CustomFields" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for CustomFields - Full access for all authenticated users
+CREATE POLICY "Full access to CustomFields"
+ON "CustomFields" FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Enable RLS for Features
+ALTER TABLE "Features" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for Features - Full access for all authenticated users
+CREATE POLICY "Full access to Features"
+ON "Features" FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
