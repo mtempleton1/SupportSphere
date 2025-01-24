@@ -100,6 +100,7 @@ export function TicketView({ ticketId, realtimeEvent }: TicketViewProps) {
   const [messageInput, setMessageInput] = useState('')
   const [isSending, setIsSending] = useState(false)
   const [userProfiles, setUserProfiles] = useState<Record<string, UserProfile>>({})
+  const [hasUnreadMessages, setHasUnreadMessages] = useState(false)
   const chatContainerRef = useRef<HTMLDivElement>(null)
   const hasScrolledToBottomRef = useRef(false)
   const wasAtBottomRef = useRef(false)
@@ -115,8 +116,11 @@ export function TicketView({ ticketId, realtimeEvent }: TicketViewProps) {
 
   // Function to scroll to bottom
   const scrollToBottom = () => {
+    console.log("SCROLLING TO BOTTOM", chatContainerRef.current)
     if (chatContainerRef.current) {
+      console.log("IN IF")
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
+      setHasUnreadMessages(false)
     }
   }
 
@@ -126,20 +130,38 @@ export function TicketView({ ticketId, realtimeEvent }: TicketViewProps) {
       scrollToBottom()
       hasScrolledToBottomRef.current = true
     }
-  }, [loading, comments.length])
 
-  // Add scroll event listener to track if user is at bottom
-  useEffect(() => {
     const container = chatContainerRef.current
     if (!container) return
 
     const handleScroll = () => {
-      wasAtBottomRef.current = isAtBottom()
-    }
+      const isCurrentlyAtBottom = isAtBottom()
 
+      wasAtBottomRef.current = isCurrentlyAtBottom
+      
+      // If we're at the bottom, clear unread messages
+      if (isCurrentlyAtBottom) {
+        setHasUnreadMessages(false)
+      }
+    }
+    // Add both scroll and wheel event listeners for more reliable detection
     container.addEventListener('scroll', handleScroll)
-    return () => container.removeEventListener('scroll', handleScroll)
-  }, [])
+    container.addEventListener('wheel', handleScroll)
+
+    // Also check on any resize events
+    window.addEventListener('resize', handleScroll)
+
+    return () => {
+      container.removeEventListener('scroll', handleScroll)
+      container.removeEventListener('wheel', handleScroll)
+      window.removeEventListener('resize', handleScroll)
+    }
+  }, [loading, comments.length])
+
+  // // Add scroll event listener to track if user is at bottom and check for unread messages
+  // useEffect(() => {
+    
+  // }, [])
 
   // Function to fetch ticket data
   const fetchTicketData = async (session: any) => {
@@ -239,9 +261,9 @@ export function TicketView({ ticketId, realtimeEvent }: TicketViewProps) {
     const handleRealtimeEvent = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
-
       // Store scroll position state before updates
       wasAtBottomRef.current = isAtBottom()
+
 
       // Handle ticket updates
       if (realtimeEvent.table === 'Tickets' && 
@@ -279,9 +301,14 @@ export function TicketView({ ticketId, realtimeEvent }: TicketViewProps) {
 
               setComments(prevComments => {
                 const newComments = [...prevComments, newComment]
-                // Schedule a scroll to bottom for after render if we were at bottom
+
+                // If we were at bottom, scroll to bottom after render
                 if (wasAtBottomRef.current) {
-                  setTimeout(scrollToBottom, 0)
+                  setTimeout(scrollToBottom, 15)
+                  // scrollToBottom()
+                } else {
+                  // If we weren't at bottom, show unread messages indicator
+                  setHasUnreadMessages(true)
                 }
                 return newComments
               });
@@ -422,39 +449,51 @@ export function TicketView({ ticketId, realtimeEvent }: TicketViewProps) {
             </button>
           </div>
         </div>
-        <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-6">
-          {/* Comments */}
-          {comments.map((comment) => (
-            <div key={`${comment.id}-${comment.createdAt}`} className="flex space-x-3">
-              <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0">
-                {comment.author?.avatarUrl && (
-                  <img 
-                    src={comment.author?.avatarUrl} 
-                    alt={comment.author?.name} 
-                    className="w-full h-full rounded-full object-cover"
-                  />
-                )}
-              </div>
-              <div>
-                <div className="flex items-center space-x-2 mb-1">
-                  <span className="font-medium">{comment.author?.name}</span>
-                  <span className="text-sm text-gray-500">
-                    {new Date(comment.createdAt).toLocaleString()}
-                  </span>
-                  {!comment.isPublic && (
-                    <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
-                      Internal Note
-                    </span>
+        <div className="flex-1 flex flex-col min-h-0">
+          <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-6">
+            {comments.map((comment) => (
+              <div key={`${comment.id}-${comment.createdAt}`} className="flex space-x-3">
+                <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0">
+                  {comment.author?.avatarUrl && (
+                    <img 
+                      src={comment.author?.avatarUrl} 
+                      alt={comment.author?.name} 
+                      className="w-full h-full rounded-full object-cover"
+                    />
                   )}
                 </div>
-                <div className={`rounded-lg p-3 ${comment.isPublic ? 'bg-blue-50' : 'bg-gray-100'}`}>
-                  <p className="text-left">{comment.content}</p>
+                <div>
+                  <div className="flex items-center space-x-2 mb-1">
+                    <span className="font-medium">{comment.author?.name}</span>
+                    <span className="text-sm text-gray-500">
+                      {new Date(comment.createdAt).toLocaleString()}
+                    </span>
+                    {!comment.isPublic && (
+                      <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
+                        Internal Note
+                      </span>
+                    )}
+                  </div>
+                  <div className={`rounded-lg p-3 ${comment.isPublic ? 'bg-blue-50' : 'bg-gray-100'}`}>
+                    <p className="text-left">{comment.content}</p>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+          {/* New messages indicator in its own container */}
+          <div className="relative h-0">
+            {hasUnreadMessages && (
+              <div 
+                className="absolute left-1/2 -top-4 -translate-x-1/2 bg-blue-500 text-white text-sm px-3 py-1.5 rounded-full shadow-lg cursor-pointer hover:bg-blue-600 transition-colors mx-auto w-fit z-10"
+                onClick={scrollToBottom}
+              >
+                New messages ↓
+              </div>
+            )}
+          </div>
         </div>
-        <div className="border-t p-4">
+        <div className="border-t p-4 bg-white">
           <div className="border rounded-lg">
             <div className="p-3">
               <textarea
