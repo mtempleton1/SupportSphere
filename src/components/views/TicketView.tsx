@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
+import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 interface Account {
   accountId: string
@@ -72,11 +73,21 @@ interface Comment {
   author: UserProfile
 }
 
+type RealtimeEvent = {
+  table: string;
+  schema: string;
+  eventType: 'INSERT' | 'UPDATE' | 'DELETE';
+  payload: RealtimePostgresChangesPayload<{
+    [key: string]: any;
+  }>;
+};
+
 interface TicketViewProps {
   ticketId: string;
+  realtimeEvent: RealtimeEvent | null;
 }
 
-export function TicketView({ ticketId }: TicketViewProps) {
+export function TicketView({ ticketId, realtimeEvent }: TicketViewProps) {
   const [account, setAccount] = useState<Account | null>(null)
   const [ticket, setTicket] = useState<Ticket | null>(null)
   const [requester, setRequester] = useState<UserProfile | null>(null)
@@ -86,8 +97,42 @@ export function TicketView({ ticketId }: TicketViewProps) {
   const [error, setError] = useState<string | null>(null)
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false)
 
+  // Function to fetch ticket data
+  const fetchTicketData = async (session: any) => {
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_PROJECT_URL}/functions/v1/fetch-ticket?ticketId=${ticketId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+
+      const { data, error: apiError } = await response.json()
+      
+      if (apiError) {
+        throw new Error(apiError)
+      }
+
+      if (!data) {
+        throw new Error('No data returned from API')
+      }
+
+      setAccount(data.account)
+      setTicket(data.ticket)
+      setComments(data.comments)
+      setAssignee(data.assignee)
+      setRequester(data.requester)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch data')
+    }
+  }
+
+  // Initial data fetch
   useEffect(() => {
-    async function fetchTicketData() {
+    async function initializeTicketData() {
       try {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) {
@@ -95,32 +140,7 @@ export function TicketView({ ticketId }: TicketViewProps) {
           return
         }
 
-        const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_PROJECT_URL}/functions/v1/fetch-ticket?ticketId=${ticketId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${session.access_token}`,
-              'Content-Type': 'application/json',
-            },
-          }
-        )
-
-        const { data, error: apiError } = await response.json()
-        
-        if (apiError) {
-          throw new Error(apiError)
-        }
-
-        if (!data) {
-          throw new Error('No data returned from API')
-        }
-
-        setAccount(data.account)
-        setTicket(data.ticket)
-        setComments(data.comments)
-        setAssignee(data.assignee)
-        setRequester(data.requester)
-        console.log(data)
+        await fetchTicketData(session)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch data')
       } finally {
@@ -128,8 +148,34 @@ export function TicketView({ ticketId }: TicketViewProps) {
       }
     }
 
-    fetchTicketData()
+    initializeTicketData()
   }, [ticketId])
+
+  // Handle real-time events
+  useEffect(() => {
+    if (!realtimeEvent) return;
+
+    const handleRealtimeEvent = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      // Handle ticket updates
+      if (realtimeEvent.table === 'Tickets' && 
+          realtimeEvent.eventType === 'UPDATE' && 
+          realtimeEvent.payload.new.ticketId === ticketId) {
+        await fetchTicketData(session);
+      }
+      
+      // Handle comment changes
+      if (realtimeEvent.table === 'TicketComments' && 
+          (realtimeEvent.eventType === 'INSERT' || realtimeEvent.eventType === 'UPDATE') && 
+          realtimeEvent.payload.new.ticketId === ticketId) {
+        await fetchTicketData(session);
+      }
+    };
+
+    handleRealtimeEvent();
+  }, [realtimeEvent, ticketId]);
 
   if (loading) return <div>Loading...</div>
   if (error) return <div>Error: {error}</div>

@@ -87,7 +87,7 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
-
+  let userClient;
   try {
     // Get request data
     const { email, reason, content, channelType } = await req.json() as TicketRequest
@@ -122,19 +122,6 @@ serve(async (req) => {
     const adminClient = createClient(supabaseUrl, supabaseServiceKey)
 
     // Get auth header to check if user is already authenticated
-    const authHeader = req.headers.get('authorization')
-    let userClient = createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-        detectSessionInUrl: false
-      },
-      global: {
-        headers: {
-          authorization: authHeader || ''
-        }
-      }
-    })
 
     // Use service role to get account and related data
     const { data: account, error: accountError } = await adminClient
@@ -143,7 +130,7 @@ serve(async (req) => {
       .eq('subdomain', subdomain)
       .single()
 
-    if (accountError || !account) {
+      if (accountError || !account) {
       throw new Error('Account not found')
     }
 
@@ -160,7 +147,7 @@ serve(async (req) => {
       .eq('isDefault', true)
       .single()
 
-    if (brandError || !brand) {
+      if (brandError || !brand) {
       throw new Error('Default brand not found')
     }
   
@@ -172,7 +159,7 @@ serve(async (req) => {
       .eq('type', 'help_center')
       .single()
 
-    let channelId: string
+      let channelId: string
     if (channelError) {
       // Create help center channel
       const { data: newChannel, error: createChannelError } = await adminClient
@@ -194,13 +181,19 @@ serve(async (req) => {
     } else {
       channelId = channel.channelId
     }
-
+    // Extract the JWT token
     // Check if user is already authenticated
-    const { data: { user: existingUser }, error: authError } = await userClient.auth.getUser()
+    const authHeader = req.headers.get('authorization')
+    if (!authHeader) {
+      throw new Error('No authorization header')
+    }
+
+    // Extract the JWT token
+    const token = authHeader.replace('Bearer ', '')
+    
     let userId: string
     let sessionForResponse: { access_token: string, refresh_token: string, expires_in: number } | undefined
-
-    if (!existingUser || authError) {
+    if (!token) {
       // Generate a random password for the new user
       const password = "Password123!"
 
@@ -210,7 +203,6 @@ serve(async (req) => {
         password: password,
         email_confirm: true // Auto-confirm the email
       });
-
       if (signUpError) {
         // Check if error is due to existing email
         return new Response(
@@ -293,11 +285,27 @@ serve(async (req) => {
           stack: signInError instanceof Error ? signInError.stack : undefined
         })
 
-        // If sign in fails, fall back to using admin client for ticket creation
-        userClient = adminClient
       }
     } else {
-      userId = existingUser.id;
+      // Create user client with the token
+      userClient = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+          detectSessionInUrl: false
+        },
+        global: {
+          headers: {
+            authorization: `Bearer ${token}`
+          }
+        }
+      })
+
+      const { data: existingUser, error: authError } = await userClient
+        .from('UserProfiles')
+        .select('userId')
+        .single()
+      userId = existingUser.userId;
     }
 
     // Create ticket using authenticated user client
