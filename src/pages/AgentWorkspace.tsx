@@ -9,7 +9,7 @@ import { TicketView } from '../components/views/TicketView';
 import { NewTabDialog } from '../components/NewTabDialog';
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import type { Database } from '../types/supatypes';
-import { RealtimeEvent, TabEvent } from '../types/realtime'
+import { RealtimeEvent, TabEvent, AgentPresenceState, TicketPresenceState, TicketPresenceChannelState, PresenceState } from '../types/realtime'
 
 type DatabaseTicket = Database['public']['Tables']['Tickets']['Row'];
 type DatabaseComment = Database['public']['Tables']['TicketComments']['Row'];
@@ -40,6 +40,15 @@ export function AgentWorkspace() {
   const [isNewTabDialogOpen, setIsNewTabDialogOpen] = useState(false);
   const [unreadMessageTabs, setUnreadMessageTabs] = useState<string[]>([]);
   const [currentRealtimeEvent, setCurrentRealtimeEvent] = useState<RealtimeEvent | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [userProfile, setUserProfile] = useState<AgentPresenceState | null>(null);
+  const presenceChannelRef = useRef<any>(null);
+  const lastActivityRef = useRef<string>(new Date().toISOString());
+  const activityTimeoutRef = useRef<any>(null);
+  const [ticketPresenceChannels, setTicketPresenceChannels] = useState<Record<string, any>>({});
+  const [ticketViewers, setTicketViewers] = useState<Record<string, TicketPresenceState[]>>({});
+  const currentSectionRef = useRef<'details' | 'conversation' | 'requester'>('details');
+  const [globalPresenceState, setGlobalPresenceState] = useState<PresenceState>({});
   
   // Add refs to track current state
   const workspaceRef = useRef(workspace);
@@ -54,6 +63,57 @@ export function AgentWorkspace() {
     unreadMessageTabsRef.current = unreadMessageTabs;
   }, [unreadMessageTabs]);
 
+  // Track user activity
+  useEffect(() => {
+    const updateActivity = () => {
+      lastActivityRef.current = new Date().toISOString();
+      
+      // Clear any existing timeout
+      if (activityTimeoutRef.current) {
+        clearTimeout(activityTimeoutRef.current);
+      }
+
+      // Update presence state to active
+      if (presenceChannelRef.current && userProfile) {
+        presenceChannelRef.current.track({
+          ...userProfile,
+          lastActivity: lastActivityRef.current,
+          isActive: true
+        });
+      }
+
+      // Set timeout to mark as inactive after 5 minutes
+      activityTimeoutRef.current = setTimeout(() => {
+        if (presenceChannelRef.current && userProfile) {
+          presenceChannelRef.current.track({
+            ...userProfile,
+            lastActivity: lastActivityRef.current,
+            isActive: false
+          });
+        }
+      }, 5 * 60 * 1000); // 5 minutes
+    };
+
+    // Add event listeners for user activity
+    window.addEventListener('mousemove', updateActivity);
+    window.addEventListener('keydown', updateActivity);
+    window.addEventListener('click', updateActivity);
+    window.addEventListener('scroll', updateActivity);
+
+    // Initial activity update
+    updateActivity();
+
+    return () => {
+      window.removeEventListener('mousemove', updateActivity);
+      window.removeEventListener('keydown', updateActivity);
+      window.removeEventListener('click', updateActivity);
+      window.removeEventListener('scroll', updateActivity);
+      if (activityTimeoutRef.current) {
+        clearTimeout(activityTimeoutRef.current);
+      }
+    };
+  }, [userProfile]);
+
   useEffect(() => {
     async function checkAuth() {
       const { data: { session } } = await supabase.auth.getSession();
@@ -61,9 +121,71 @@ export function AgentWorkspace() {
         navigate('/');
         return;
       }
+      setCurrentUserId(session.user.id);
+
+      // Fetch user profile
+      const { data: profile } = await supabase
+        .from('UserProfiles')
+        .select('userId, name, email, avatarUrl')
+        .eq('userId', session.user.id)
+        .single();
+
+      if (profile) {
+        const presenceState: AgentPresenceState = {
+          userId: profile.userId,
+          name: profile.name,
+          email: profile.email,
+          avatarUrl: profile.avatarUrl,
+          lastActivity: new Date().toISOString(),
+          isActive: true
+        };
+        setUserProfile(presenceState);
+
+        // Set up presence channel
+        const channel = supabase.channel('agents_presence', {
+          config: {
+            presence: {
+              key: profile.userId,
+            },
+          },
+        });
+        
+        channel
+          .on('presence', { event: 'sync' }, () => {
+            const state = channel.presenceState();
+            console.log('Presence state synced:', state);
+            setGlobalPresenceState(state as PresenceState);
+          })
+          .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+            console.log('User joined:', key, newPresences);
+            setGlobalPresenceState(channel.presenceState() as PresenceState);
+          })
+          .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+            console.log('User left:', key, leftPresences);
+            setGlobalPresenceState(channel.presenceState() as PresenceState);
+          })
+          .subscribe(async (status) => {
+            if (status === 'SUBSCRIBED') {
+              // Track presence once subscribed
+              const trackStatus = await channel.track(presenceState);
+              console.log('Presence tracking status:', trackStatus);
+            }
+          });
+
+        presenceChannelRef.current = channel;
+      }
     }
 
     checkAuth();
+
+    return () => {
+      // Cleanup presence channel on unmount
+      if (presenceChannelRef.current) {
+        presenceChannelRef.current.untrack().then(() => {
+          supabase.removeChannel(presenceChannelRef.current);
+        });
+      }
+    };
   }, [navigate]);
 
   // Initialize dashboard tab if no tabs exist
@@ -326,6 +448,134 @@ export function AgentWorkspace() {
     }
   };
 
+  // Function to join a ticket's presence channel
+  const joinTicketPresenceChannel = async (ticketId: string) => {
+    if (ticketPresenceChannels[ticketId]) return; // Already joined
+
+    if (!userProfile) {
+      console.error('No user profile available');
+      return;
+    }
+
+    const channel = supabase.channel(`ticket_presence_${ticketId}`);
+    
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState() as TicketPresenceChannelState;
+        setTicketViewers(prev => ({
+          ...prev,
+          [ticketId]: Object.values(state).flat()
+        }));
+      })
+      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+        console.log('User joined ticket view:', key, newPresences);
+      })
+      .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+        console.log('User left ticket view:', key, leftPresences);
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          // Track presence once subscribed
+          const presenceState: TicketPresenceState = {
+            userId: userProfile.userId,
+            name: userProfile.name,
+            avatarUrl: userProfile.avatarUrl,
+            currentSection: currentSectionRef.current,
+            isTyping: false,
+            lastActivity: new Date().toISOString()
+          };
+          
+          await channel.track(presenceState);
+        }
+      });
+
+    setTicketPresenceChannels(prev => ({
+      ...prev,
+      [ticketId]: channel
+    }));
+  };
+
+  // Function to leave a ticket's presence channel
+  const leaveTicketPresenceChannel = async (ticketId: string) => {
+    const channel = ticketPresenceChannels[ticketId];
+    if (channel) {
+      await channel.untrack();
+      await supabase.removeChannel(channel);
+      
+      setTicketPresenceChannels(prev => {
+        const newChannels = { ...prev };
+        delete newChannels[ticketId];
+        return newChannels;
+      });
+
+      setTicketViewers(prev => {
+        const newViewers = { ...prev };
+        delete newViewers[ticketId];
+        return newViewers;
+      });
+    }
+  };
+
+  // Update presence when section changes
+  const handleSectionChange = async (ticketId: string, section: 'details' | 'conversation' | 'requester') => {
+    currentSectionRef.current = section;
+    const channel = ticketPresenceChannels[ticketId];
+    
+    if (channel && userProfile) {
+      await channel.track({
+        userId: userProfile.userId,
+        name: userProfile.name,
+        avatarUrl: userProfile.avatarUrl,
+        currentSection: section,
+        isTyping: false,
+        lastActivity: new Date().toISOString()
+      });
+    }
+  };
+
+  // Update presence when typing status changes
+  const handleTypingChange = async (ticketId: string, isTyping: boolean) => {
+    const channel = ticketPresenceChannels[ticketId];
+    
+    if (channel && userProfile) {
+      await channel.track({
+        userId: userProfile.userId,
+        name: userProfile.name,
+        avatarUrl: userProfile.avatarUrl,
+        currentSection: currentSectionRef.current as 'details' | 'conversation' | 'requester',
+        isTyping,
+        lastActivity: new Date().toISOString()
+      });
+    }
+  };
+
+  // Watch for active tab changes
+  useEffect(() => {
+    const activeTab = workspace.tabs.find(tab => tab.id === workspace.activeTabId);
+    if (activeTab?.type === 'ticket' && activeTab.data?.ticketId) {
+      joinTicketPresenceChannel(activeTab.data.ticketId);
+    }
+  }, [workspace.activeTabId]);
+
+  // Cleanup presence channels when tabs are closed
+  const handleCloseTab = async (tabId: string) => {
+    const tab = workspace.tabs.find(t => t.id === tabId);
+    if (tab?.type === 'ticket' && tab.data?.ticketId) {
+      await leaveTicketPresenceChannel(tab.data.ticketId);
+    }
+    
+    // ... existing tab closing logic ...
+  };
+
+  // Cleanup all channels on unmount
+  useEffect(() => {
+    return () => {
+      Object.keys(ticketPresenceChannels).forEach(ticketId => {
+        leaveTicketPresenceChannel(ticketId);
+      });
+    };
+  }, []);
+
   return (
     <div className="flex flex-col h-screen bg-gray-50">
       {/* Tabs */}
@@ -410,28 +660,47 @@ export function AgentWorkspace() {
 
       {/* Content */}
       <div className="flex-1 overflow-hidden">
-        {workspace.tabs.map(tab => (
-          <div
-            key={tab.id}
-            className={`h-full ${workspace.activeTabId === tab.id ? '' : 'hidden'}`}
-          >
-            {tab.type === 'dashboard' && (
-              <DashboardView 
+        {workspace.tabs.map((tab) => {
+          if (tab.id !== workspace.activeTabId) return null;
+          
+          if (tab.type === 'dashboard') {
+            return (
+              <DashboardView
+                key={tab.id}
                 onTicketSelect={(ticketId, subject, priority, ticketNumber) => 
                   openTicketTab(ticketId, subject, priority, ticketNumber)} 
                 realtimeEvent={currentRealtimeEvent}
+                presenceState={globalPresenceState}
               />
-            )}
-            {tab.type === 'ticket' && tab.data?.ticketId && (
-              <TicketView 
-                ticketId={tab.data.ticketId} 
+            );
+          }
+          
+          if (tab.type === 'ticket' && tab.data?.ticketId) {
+            // Extract ticketId and verify it's defined
+            const ticketId = tab.data.ticketId;
+            if (!ticketId) return null;
+
+            return (
+              <TicketView
+                key={tab.id}
+                ticketId={ticketId}
                 realtimeEvent={currentRealtimeEvent}
                 onTabEvent={handleTabEvent}
-                isActive={workspace.activeTabId === tab.id}
+                isActive={true}
+                currentUserId={currentUserId}
+                currentViewers={ticketViewers[ticketId] || []}
+                onSectionChange={(section: 'details' | 'conversation' | 'requester') => 
+                  handleSectionChange(ticketId, section)
+                }
+                onTypingChange={(isTyping: boolean) => 
+                  handleTypingChange(ticketId, isTyping)
+                }
               />
-            )}
-          </div>
-        ))}
+            );
+          }
+          
+          return null;
+        })}
       </div>
 
       {/* New Tab Dialog */}

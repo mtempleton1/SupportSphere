@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { X } from "lucide-react";
+import { X, Circle } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { createClient } from '@supabase/supabase-js';
+import type { PresenceState } from '../types/realtime';
 
 // Determine if we're in Vite or Node environment
 const isViteEnvironment = typeof import.meta?.env !== 'undefined';
@@ -24,6 +25,13 @@ interface UserProfile {
   };
 }
 
+interface StaffMember {
+  userId: string;
+  email: string;
+  name: string;
+  isOnline: boolean;
+}
+
 export const LoginDialog = ({
   isOpen,
   onClose,
@@ -42,6 +50,8 @@ export const LoginDialog = ({
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
+  const [loadingUserId, setLoadingUserId] = useState<string | null>(null);
 
   // Reset mode and form when dialog closes or type changes
   useEffect(() => {
@@ -52,26 +62,30 @@ export const LoginDialog = ({
       setFullName('');
       setError(null);
     }
-    
-
   }, [isOpen, type]);
 
-  if (!isOpen) return null;
+  // Load staff members when dialog opens
+  useEffect(() => {
+    if (isOpen && type === 'staff') {
+      loadStaffMembers();
+    }
+  }, [isOpen, type]);
 
-  const handleDevLogin = async () => {
-    const hostname = window.location.hostname;
-    const subdomain = hostname.split('.')[0];
-    const { data: account, error: accountError } = await supabase
-      .from('Accounts')
-      .select('accountId')
-      .eq('subdomain', subdomain)
-      .single();
-
-    if (accountError) throw accountError;
-    setLoading(true);
-    setError(null);
+  const loadStaffMembers = async () => {
     try {
-      // Create admin client for elevated access
+      const hostname = window.location.hostname;
+      const subdomain = hostname.split('.')[0];
+      
+      // Get account
+      const { data: account, error: accountError } = await supabase
+        .from('Accounts')
+        .select('accountId')
+        .eq('subdomain', subdomain)
+        .single();
+
+      if (accountError) throw accountError;
+
+      // Create admin client
       const adminClient = createClient(supabaseUrl, serviceKey, {
         auth: {
           persistSession: false,
@@ -79,44 +93,120 @@ export const LoginDialog = ({
         }
       });
 
-      // Find a user of the appropriate type in the account
-      const { data: userProfile, error: profileError } = await adminClient
-        .from('UserProfiles')
-        .select('email')
-        .eq('accountId', account.accountId)
-        .eq('userType', type === 'staff' ? 'staff' : 'end_user')
-        .limit(1)
-        .single();
+      // Get current presence state
+      const presenceChannel = supabase.channel('agents_presence');
+      await presenceChannel.subscribe();
+      const presenceState = presenceChannel.presenceState() as PresenceState;
+      
+      // Get all online user IDs
+      const onlineUserIds = new Set(
+        Object.values(presenceState)
+          .flat()
+          .map(presence => presence.userId)
+      );
 
-      if (profileError || !userProfile) {
-        throw new Error(`No ${type} user found`);
+      // Get all staff members
+      const { data: staffProfiles, error: profileError } = await adminClient
+        .from('UserProfiles')
+        .select('userId, email, name')
+        .eq('accountId', account.accountId)
+        .eq('userType', 'staff');
+
+      if (profileError || !staffProfiles) {
+        throw new Error('No staff members found');
       }
 
-      // Log in as the user
+      // Map staff profiles with online status
+      const members = staffProfiles.map(profile => ({
+        userId: profile.userId,
+        email: profile.email,
+        name: profile.name,
+        isOnline: onlineUserIds.has(profile.userId)
+      }));
+
+      setStaffMembers(members);
+
+      // Cleanup presence channel
+      await supabase.removeChannel(presenceChannel);
+
+    } catch (err) {
+      console.error('Failed to load staff members:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load staff members');
+    }
+  };
+
+  const handleStaffLogin = async (staffMember: StaffMember) => {
+    setLoadingUserId(staffMember.userId);
+    setError(null);
+    
+    try {
       const { error: loginError } = await supabase.auth.signInWithPassword({
-        email: userProfile.email,
+        email: staffMember.email,
         password: 'Password123!'
       });
 
       if (loginError) throw loginError;
 
-      // Handle navigation based on user type
-      if (type === 'staff') {
-        navigate('/agent');
-      } else {
-        navigate('/user');
-      }
+      navigate('/agent');
       onClose();
     } catch (err) {
       console.error('Auto-login failed:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
-      setLoading(false);
+      setLoadingUserId(null);
     }
   };
 
-  // In development mode, use auto-login
-  handleDevLogin();
+  if (!isOpen) return null;
+
+  // Render staff selection buttons in development mode
+  if (import.meta.env.DEV && type === 'staff') {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-semibold">Select Staff Member</h2>
+            <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+              <X size={20} />
+            </button>
+          </div>
+          
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-md text-sm">
+              {error}
+            </div>
+          )}
+
+          <div className="space-y-2">
+            {staffMembers.map(member => (
+              <button
+                key={member.userId}
+                onClick={() => handleStaffLogin(member)}
+                disabled={member.isOnline || loadingUserId === member.userId}
+                className={`w-full flex items-center justify-between p-3 rounded-md border text-left ${
+                  member.isOnline 
+                    ? 'bg-gray-50 text-gray-400 cursor-not-allowed' 
+                    : 'hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex items-center space-x-3">
+                  <Circle 
+                    size={8} 
+                    className={`fill-current ${member.isOnline ? 'text-green-500' : 'text-yellow-500'}`} 
+                  />
+                  <span>{member.name}</span>
+                </div>
+                <div className="text-sm text-gray-500">
+                  {member.isOnline ? 'Online' : 
+                   loadingUserId === member.userId ? 'Logging in...' : 'Available'}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
