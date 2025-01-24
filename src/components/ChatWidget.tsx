@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, KeyboardEvent } from 'react';
 import { MessageCircle, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import type { RealtimeEvent } from '../types/realtime';
 
 interface Comment {
   commentId: string;
@@ -26,19 +27,77 @@ interface Ticket {
 interface ChatWidgetProps {
   ticket?: Ticket | null;
   defaultOpen?: boolean;
+  realtimeEvent: RealtimeEvent | null;
 }
 
-export const ChatWidget = ({ ticket, defaultOpen = false }: ChatWidgetProps) => {
+export const ChatWidget = ({ ticket, defaultOpen = false, realtimeEvent }: ChatWidgetProps) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
 
   useEffect(() => {
     if (isOpen && ticket?.ticketId) {
       fetchTicketData();
     }
   }, [isOpen, ticket?.ticketId]);
+
+  // Handle realtime events
+  useEffect(() => {
+    if (!realtimeEvent || !ticket) return;
+
+    // Only process events for this ticket
+    if (realtimeEvent.table === 'TicketComments' && 
+        realtimeEvent.payload.new.ticketId === ticket.ticketId) {
+      
+      const handleCommentEvent = async () => {
+        const commentPayload = realtimeEvent.payload.new;
+
+        // Only show public comments in the chat widget
+        if (!commentPayload.isPublic) return;
+
+        if (realtimeEvent.eventType === 'INSERT') {
+          // Fetch the author information
+          const { data: authorData } = await supabase
+            .from('UserProfiles')
+            .select('name')
+            .eq('userId', commentPayload.authorId)
+            .single();
+
+          // Add the new comment to state
+          const newComment: Comment = {
+            commentId: commentPayload.commentId,
+            content: commentPayload.content,
+            isPublic: commentPayload.isPublic,
+            createdAt: commentPayload.createdAt,
+            authorId: commentPayload.authorId,
+            author: {
+              name: authorData?.name || 'Unknown User'
+            }
+          };
+
+          setComments(prevComments => [...prevComments, newComment]);
+        } else if (realtimeEvent.eventType === 'UPDATE') {
+          // Update the existing comment
+          setComments(prevComments => 
+            prevComments.map(comment => 
+              comment.commentId === commentPayload.commentId
+                ? {
+                    ...comment,
+                    content: commentPayload.content,
+                    isPublic: commentPayload.isPublic,
+                  }
+                : comment
+            )
+          );
+        }
+      };
+
+      handleCommentEvent();
+    }
+  }, [realtimeEvent, ticket]);
 
   const fetchTicketData = async () => {
     try {
@@ -74,6 +133,45 @@ export const ChatWidget = ({ ticket, defaultOpen = false }: ChatWidgetProps) => 
       setError(err instanceof Error ? err.message : 'Failed to fetch data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!message.trim() || !ticket?.ticketId || sendingMessage) return;
+
+    try {
+      setSendingMessage(true);
+      setError(null);
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setError('No active session');
+        return;
+      }
+
+      const { error: insertError } = await supabase
+        .from('TicketComments')
+        .insert({
+          ticketId: ticket.ticketId,
+          content: message.trim(),
+          authorId: session.user.id,
+          isPublic: true
+        });
+
+      if (insertError) throw insertError;
+
+      setMessage('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send message');
+    } finally {
+      setSendingMessage(false);
+    }
+  };
+
+  const handleKeyPress = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
     }
   };
 
@@ -139,10 +237,22 @@ export const ChatWidget = ({ ticket, defaultOpen = false }: ChatWidgetProps) => 
               placeholder="Write a message..."
               className="w-full p-2 border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
               rows={3}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              onKeyPress={handleKeyPress}
+              disabled={sendingMessage}
             />
             <div className="mt-2 flex justify-end">
-              <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                Send
+              <button 
+                onClick={handleSendMessage}
+                disabled={!message.trim() || sendingMessage}
+                className={`px-4 py-2 bg-blue-600 text-white rounded-lg ${
+                  !message.trim() || sendingMessage 
+                    ? 'opacity-50 cursor-not-allowed' 
+                    : 'hover:bg-blue-700'
+                }`}
+              >
+                {sendingMessage ? 'Sending...' : 'Send'}
               </button>
             </div>
           </div>

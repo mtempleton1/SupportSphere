@@ -9,24 +9,10 @@ import { TicketView } from '../components/views/TicketView';
 import { NewTabDialog } from '../components/NewTabDialog';
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import type { Database } from '../types/supatypes';
+import { RealtimeEvent } from '../types/realtime'
 
 type DatabaseTicket = Database['public']['Tables']['Tickets']['Row'];
 type DatabaseComment = Database['public']['Tables']['TicketComments']['Row'];
-
-type RealtimeEvent = {
-  table: 'Tickets' | 'TicketComments';
-  schema: 'public';
-  eventType: 'INSERT' | 'UPDATE' | 'DELETE';
-  payload: {
-    new: {
-      ticketId: string;
-      [key: string]: any;
-    };
-    old: {
-      [key: string]: any;
-    };
-  };
-};
 
 const getPriorityColor = (priority: TicketPriority | undefined): string => {
   switch (priority) {

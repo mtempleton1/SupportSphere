@@ -7,6 +7,10 @@ import { SearchBar } from "../components/SearchBar";
 import { Footer } from "../components/Footer";
 import { ChatWidget } from "../components/ChatWidget";
 import { MessageSquarePlus, UserCircle } from "lucide-react";
+import type { RealtimeEvent } from '../types/realtime';
+import type { Database } from '../types/supatypes';
+
+type DatabaseComment = Database['public']['Tables']['TicketComments']['Row'];
 
 interface Account {
   accountId: string
@@ -43,6 +47,7 @@ export function AccountHome() {
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [comments, setComments] = useState<TicketComment[]>([]);
   const [ticketLoading, setTicketLoading] = useState(false);
+  const [realtimeEvent, setRealtimeEvent] = useState<RealtimeEvent | null>(null);
   
   const handleOpenStaffLogin = () => setLoginType("staff");
   const handleOpenUserLogin = () => setLoginType("user");
@@ -50,6 +55,62 @@ export function AccountHome() {
   const handleCreateTicket = () => {
     navigate('/tickets/new');
   };
+
+  // Set up realtime subscription
+  useEffect(() => {
+    const setupRealtimeSubscription = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const channel = supabase.channel('account-home-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'TicketComments',
+          },
+          (payload) => {
+            setRealtimeEvent({
+              table: 'TicketComments',
+              schema: 'public',
+              eventType: 'INSERT',
+              payload: {
+                new: payload.new as DatabaseComment,
+                old: payload.old as DatabaseComment,
+              },
+            });
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'TicketComments',
+          },
+          (payload) => {
+            setRealtimeEvent({
+              table: 'TicketComments',
+              schema: 'public',
+              eventType: 'UPDATE',
+              payload: {
+                new: payload.new as DatabaseComment,
+                old: payload.old as DatabaseComment,
+              },
+            });
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    };
+
+    setupRealtimeSubscription();
+  }, []);
+
   // Fetch tickets when authenticated
   useEffect(() => {
     async function fetchTickets() {
@@ -199,6 +260,7 @@ export function AccountHome() {
           <ChatWidget 
             ticket={ticket}
             defaultOpen={!!ticket}
+            realtimeEvent={realtimeEvent}
           />
         )}
       </div>
