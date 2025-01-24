@@ -13,6 +13,7 @@ import { RealtimeEvent, TabEvent } from '../types/realtime'
 
 type DatabaseTicket = Database['public']['Tables']['Tickets']['Row'];
 type DatabaseComment = Database['public']['Tables']['TicketComments']['Row'];
+type DatabaseTicketTag = Database['public']['Tables']['TicketTags']['Row'];
 
 const getPriorityColor = (priority: TicketPriority | undefined): string => {
   switch (priority) {
@@ -184,6 +185,45 @@ export function AgentWorkspace() {
               payload: {
                 new: payload.new as DatabaseComment,
                 old: payload.old as DatabaseComment,
+              },
+            });
+          }
+        )
+        // Listen for tag changes
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'TicketTags',
+          },
+          (payload) => {
+            handleRealtimeEvent({
+              table: 'TicketTags',
+              schema: 'public',
+              eventType: 'INSERT',
+              payload: {
+                new: payload.new as DatabaseTicketTag,
+                old: payload.old as DatabaseTicketTag,
+              },
+            });
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'DELETE',
+            schema: 'public',
+            table: 'TicketTags',
+          },
+          (payload) => {
+            handleRealtimeEvent({
+              table: 'TicketTags',
+              schema: 'public',
+              eventType: 'DELETE',
+              payload: {
+                new: payload.new as DatabaseTicketTag,
+                old: payload.old as DatabaseTicketTag,
               },
             });
           }
