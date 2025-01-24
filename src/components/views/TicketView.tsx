@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import {
   Paperclip,
@@ -8,7 +8,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import { RealtimeEvent } from '../../types/realtime'
+import { RealtimeEvent, TabEvent } from '../../types/realtime'
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 interface Account {
@@ -86,9 +86,11 @@ interface Comment {
 interface TicketViewProps {
   ticketId: string;
   realtimeEvent: RealtimeEvent | null;
+  onTabEvent?: (event: TabEvent) => void;
+  isActive?: boolean;
 }
 
-export function TicketView({ ticketId, realtimeEvent }: TicketViewProps) {
+export function TicketView({ ticketId, realtimeEvent, onTabEvent, isActive }: TicketViewProps) {
   const [account, setAccount] = useState<Account | null>(null)
   const [ticket, setTicket] = useState<Ticket | null>(null)
   const [requester, setRequester] = useState<UserProfile | null>(null)
@@ -104,6 +106,7 @@ export function TicketView({ ticketId, realtimeEvent }: TicketViewProps) {
   const chatContainerRef = useRef<HTMLDivElement>(null)
   const hasScrolledToBottomRef = useRef(false)
   const wasAtBottomRef = useRef(false)
+  const lastEventRef = useRef<RealtimeEvent | null>(null)
 
   // Function to check if scrolled to bottom
   const isAtBottom = () => {
@@ -122,44 +125,52 @@ export function TicketView({ ticketId, realtimeEvent }: TicketViewProps) {
     }
   }
 
-  // Initial scroll after data loads - only once
+  // Add scroll event listener to track if user is at bottom and check for unread messages
   useEffect(() => {
-    if (!loading && comments.length > 0 && !hasScrolledToBottomRef.current) {
-      scrollToBottom()
-      hasScrolledToBottomRef.current = true
-    }
-
-    const container = chatContainerRef.current
-    if (!container) return
+    const container = chatContainerRef.current;
+    if (!container) return;
 
     const handleScroll = () => {
-      const isCurrentlyAtBottom = isAtBottom()
-
-      wasAtBottomRef.current = isCurrentlyAtBottom
+      const isCurrentlyAtBottom = isAtBottom();
+      wasAtBottomRef.current = isCurrentlyAtBottom;
       
-      // If we're at the bottom, clear unread messages
+      // If we're at the bottom, clear unread messages and notify parent
       if (isCurrentlyAtBottom) {
-        setHasUnreadMessages(false)
+        setHasUnreadMessages(false);
+        onTabEvent?.({
+          type: 'MESSAGES_READ',
+          ticketId
+        });
       }
-    }
+    };
+
     // Add both scroll and wheel event listeners for more reliable detection
-    container.addEventListener('scroll', handleScroll)
-    container.addEventListener('wheel', handleScroll)
+    container.addEventListener('scroll', handleScroll);
+    container.addEventListener('wheel', handleScroll);
 
     // Also check on any resize events
-    window.addEventListener('resize', handleScroll)
+    window.addEventListener('resize', handleScroll);
 
     return () => {
-      container.removeEventListener('scroll', handleScroll)
-      container.removeEventListener('wheel', handleScroll)
-      window.removeEventListener('resize', handleScroll)
-    }
-  }, [loading, comments.length])
+      container.removeEventListener('scroll', handleScroll);
+      container.removeEventListener('wheel', handleScroll);
+      window.removeEventListener('resize', handleScroll);
+    };
+  }, [ticketId, onTabEvent]);
 
-  // // Add scroll event listener to track if user is at bottom and check for unread messages
-  // useEffect(() => {
-    
-  // }, [])
+  // Add initial scroll effect
+  useEffect(() => {
+    if (!loading && comments.length > 0) {
+      scrollToBottom();
+    }
+  }, [loading, comments.length]);
+
+  // Scroll to bottom when view becomes active if it was at bottom before
+  useEffect(() => {
+    if (isActive && wasAtBottomRef.current) {
+      scrollToBottom();
+    }
+  }, [isActive]);
 
   // Function to fetch ticket data
   const fetchTicketData = async (session: any) => {
@@ -175,9 +186,6 @@ export function TicketView({ ticketId, realtimeEvent }: TicketViewProps) {
       )
 
       const { data, error: apiError } = await response.json()
-      console.log("DATA")
-      console.log(data)
-      console.log(userProfiles)
       if (apiError) {
         throw new Error(apiError)
       }
@@ -302,85 +310,104 @@ export function TicketView({ ticketId, realtimeEvent }: TicketViewProps) {
     initializeTicketData()
   }, [ticketId])
 
-  // Handle real-time events
-  useEffect(() => {
-    if (!realtimeEvent) return;
+  // Handle realtime events
+  const handleRealtimeEvent = useCallback(async (event: RealtimeEvent) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
 
-    const handleRealtimeEvent = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-      // Store scroll position state before updates
-      wasAtBottomRef.current = isAtBottom()
+    // Store scroll position state before updates
+    wasAtBottomRef.current = isAtBottom()
 
-
-      // Handle ticket updates
-      if (realtimeEvent.table === 'Tickets' && 
-          realtimeEvent.eventType === 'UPDATE' && 
-          realtimeEvent.payload.new.ticketId === ticketId) {
-        await fetchTicketData(session);
+    // Handle ticket updates
+    if (event.table === 'Tickets' && 
+        event.eventType === 'UPDATE' && 
+        event.payload.new.ticketId === ticketId) {
+      
+      // Emit tab event if subject changed
+      if (event.payload.new.subject !== event.payload.old.subject) {
+        onTabEvent?.({
+          type: 'TICKET_UPDATE',
+          ticketId,
+          changes: {
+            subject: event.payload.new.subject
+          }
+        });
       }
       
-      // Handle comment changes
-      if (realtimeEvent.table === 'TicketComments') {
-        const commentPayload = realtimeEvent.payload.new;
-        
-        // Only process comments for this ticket
-        if (commentPayload.ticketId === ticketId) {
-          if (realtimeEvent.eventType === 'INSERT') {
-            // Get the author profile
-            const authorProfile = await getUserProfile(commentPayload.authorId, session);
-            
-            if (authorProfile) {
-              // Add the new comment to state
-              const newComment: Comment = {
-                id: commentPayload.commentId,
-                content: commentPayload.content,
-                isPublic: commentPayload.isPublic,
-                createdAt: commentPayload.createdAt,
-                authorId: commentPayload.authorId,
-                author: {
-                  id: commentPayload.authorId,
-                  name: authorProfile.name,
-                  email: authorProfile.email,
-                  role: authorProfile.role,
-                  avatarUrl: authorProfile.avatarUrl
-                }
-              };
+      await fetchTicketData(session);
+    }
+    
+    // Handle comment changes
+    if (event.table === 'TicketComments') {
+      const commentPayload = event.payload.new;
+      
+      // Only process comments for this ticket
+      if (commentPayload.ticketId === ticketId) {
+        if (event.eventType === 'INSERT') {
+          // Get the author profile
+          const authorProfile = await getUserProfile(commentPayload.authorId, session);
+          
+          if (authorProfile) {
+            // Add the new comment to state
+            const newComment: Comment = {
+              id: commentPayload.commentId,
+              content: commentPayload.content,
+              isPublic: commentPayload.isPublic,
+              createdAt: commentPayload.createdAt,
+              authorId: commentPayload.authorId,
+              author: {
+                id: commentPayload.authorId,
+                name: authorProfile.name,
+                email: authorProfile.email,
+                role: authorProfile.role,
+                avatarUrl: authorProfile.avatarUrl
+              }
+            };
 
-              setComments(prevComments => {
-                const newComments = [...prevComments, newComment]
+            setComments(prevComments => {
+              const newComments = [...prevComments, newComment]
 
-                // If we were at bottom, scroll to bottom after render
-                if (wasAtBottomRef.current) {
-                  setTimeout(scrollToBottom, 15)
-                  // scrollToBottom()
-                } else {
-                  // If we weren't at bottom, show unread messages indicator
-                  setHasUnreadMessages(true)
-                }
-                return newComments
-              });
-            }
-          } else if (realtimeEvent.eventType === 'UPDATE') {
-            // Update the existing comment
-            setComments(prevComments => 
-              prevComments.map(comment => 
-                comment.id === commentPayload.commentId
-                  ? {
-                      ...comment,
-                      content: commentPayload.content,
-                      isPublic: commentPayload.isPublic,
-                    }
-                  : comment
-              )
-            );
+              // If we were at bottom when we last checked, scroll to bottom after render
+              if (wasAtBottomRef.current) {
+                setTimeout(scrollToBottom, 15)
+              } else {
+                // If we weren't at bottom, show unread messages indicator
+                setHasUnreadMessages(true)
+              }
+              return newComments
+            });
           }
+        } else if (event.eventType === 'UPDATE') {
+          // Update the existing comment
+          setComments(prevComments => 
+            prevComments.map(comment => 
+              comment.id === commentPayload.commentId
+                ? {
+                    ...comment,
+                    content: commentPayload.content,
+                    isPublic: commentPayload.isPublic,
+                  }
+                : comment
+            )
+          );
         }
       }
-    };
+    }
+  }, [ticketId, onTabEvent]);
 
-    handleRealtimeEvent();
-  }, [realtimeEvent, ticketId]);
+  // Watch for new realtime events
+  useEffect(() => {
+    if (realtimeEvent && realtimeEvent !== lastEventRef.current) {
+      lastEventRef.current = realtimeEvent;
+      handleRealtimeEvent(realtimeEvent);
+    }
+  }, [realtimeEvent, handleRealtimeEvent]);
+
+  // Track scroll position when tab becomes active/inactive
+  useEffect(() => {
+    // Check if we're at bottom when component mounts or updates
+    wasAtBottomRef.current = isAtBottom();
+  }, []);
 
   const handleSendMessage = async () => {
     if (!messageInput.trim() || isSending) return;
