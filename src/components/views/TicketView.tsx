@@ -116,9 +116,7 @@ export function TicketView({ ticketId, realtimeEvent }: TicketViewProps) {
 
   // Function to scroll to bottom
   const scrollToBottom = () => {
-    console.log("SCROLLING TO BOTTOM", chatContainerRef.current)
     if (chatContainerRef.current) {
-      console.log("IN IF")
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
       setHasUnreadMessages(false)
     }
@@ -177,7 +175,9 @@ export function TicketView({ ticketId, realtimeEvent }: TicketViewProps) {
       )
 
       const { data, error: apiError } = await response.json()
-      
+      console.log("DATA")
+      console.log(data)
+      console.log(userProfiles)
       if (apiError) {
         throw new Error(apiError)
       }
@@ -191,6 +191,54 @@ export function TicketView({ ticketId, realtimeEvent }: TicketViewProps) {
       setComments(data.comments)
       setAssignee(data.assignee)
       setRequester(data.requester)
+
+      // Add requester profile to userProfiles if available
+      if (data.requester) {
+        setUserProfiles(prev => ({
+          ...prev,
+          [data.requester.userId]: {
+            id: data.requester.userId,
+            name: data.requester.name,
+            email: data.requester.email,
+            role: data.requester.userType,
+          }
+        }))
+      }
+
+      // Add assignee profile to userProfiles if available
+      if (data.assignee) {
+        setUserProfiles(prev => ({
+          ...prev,
+          [data.assignee.userId]: {
+            id: data.assignee.userId,
+            name: data.assignee.name,
+            email: data.assignee.email,
+            role: data.assignee.userType,
+          }
+        }))
+      }
+
+      // Fetch profiles for any comment authors not in userProfiles
+      const uniqueAuthorIds = new Set(
+        data.comments
+          .map((comment: Comment) => comment.authorId)
+          .filter((authorId: string) => 
+            authorId && 
+            authorId !== data.requester?.userId && 
+            authorId !== data.assignee?.userId
+          )
+      )
+
+      // Fetch profiles for authors we don't have yet
+      for (const authorId of uniqueAuthorIds) {
+        const profile = await getUserProfile(authorId as string, session)
+        if (profile) {
+          setUserProfiles(prev => ({
+            ...prev,
+            [authorId as string]: profile
+          }))
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch data')
     }
@@ -451,35 +499,41 @@ export function TicketView({ ticketId, realtimeEvent }: TicketViewProps) {
         </div>
         <div className="flex-1 flex flex-col min-h-0">
           <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-6">
-            {comments.map((comment) => (
-              <div key={`${comment.id}-${comment.createdAt}`} className="flex space-x-3">
-                <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0">
-                  {comment.author?.avatarUrl && (
-                    <img 
-                      src={comment.author?.avatarUrl} 
-                      alt={comment.author?.name} 
-                      className="w-full h-full rounded-full object-cover"
-                    />
-                  )}
-                </div>
-                <div>
-                  <div className="flex items-center space-x-2 mb-1">
-                    <span className="font-medium">{comment.author?.name}</span>
-                    <span className="text-sm text-gray-500">
-                      {new Date(comment.createdAt).toLocaleString()}
-                    </span>
-                    {!comment.isPublic && (
-                      <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
-                        Internal Note
-                      </span>
+            {comments.map((comment) => {
+              // Try to get author info from userProfiles first
+              const authorProfile = userProfiles[comment.authorId]
+              const authorName = authorProfile?.name || comment.author?.name || 'Unknown User'
+              
+              return (
+                <div key={`${comment.id}-${comment.createdAt}`} className="flex space-x-3">
+                  <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0">
+                    {authorProfile?.avatarUrl && (
+                      <img 
+                        src={authorProfile.avatarUrl} 
+                        alt={authorName} 
+                        className="w-full h-full rounded-full object-cover"
+                      />
                     )}
                   </div>
-                  <div className={`rounded-lg p-3 ${comment.isPublic ? 'bg-blue-50' : 'bg-gray-100'}`}>
-                    <p className="text-left">{comment.content}</p>
+                  <div>
+                    <div className="flex items-center space-x-2 mb-1">
+                      <span className="font-medium">{authorName}</span>
+                      <span className="text-sm text-gray-500">
+                        {new Date(comment.createdAt).toLocaleString()}
+                      </span>
+                      {!comment.isPublic && (
+                        <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
+                          Internal Note
+                        </span>
+                      )}
+                    </div>
+                    <div className={`rounded-lg p-3 ${comment.isPublic ? 'bg-blue-50' : 'bg-gray-100'}`}>
+                      <p className="text-left">{comment.content}</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
           {/* New messages indicator in its own container */}
           <div className="relative h-0">
