@@ -1,5 +1,5 @@
 type RealtimeEvent = {
-    table: 'Tickets' | 'TicketComments';
+    table: 'Tickets' | 'TicketComments' | 'TicketTags';
     schema: 'public';
     eventType: 'INSERT' | 'UPDATE' | 'DELETE';
     payload: {

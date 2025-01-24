@@ -520,41 +520,6 @@ async function seedCompanyData() {
       if (orgDomainsError) throw orgDomainsError
       console.log(`Added domains for organizations in ${account.name}`)
 
-      // 8. Add Organization Tags
-      const availableTags = [
-        'VIP',
-        'Enterprise',
-        'SMB',
-        'Strategic',
-        'Partner',
-        'Prospect',
-        'Trial',
-        'Churned',
-        'At Risk',
-        'High Value'
-      ]
-
-      const orgTags = createdOrgs.flatMap(org => {
-        const numTags = faker.number.int({ min: 2, max: 5 })
-        // Get unique random tags for this organization
-        const orgTagsSet = new Set<string>()
-        while (orgTagsSet.size < numTags) {
-          orgTagsSet.add(faker.helpers.arrayElement(availableTags))
-        }
-        
-        return Array.from(orgTagsSet).map(tag => ({
-          organizationId: org.organizationId,
-          tag: tag
-        }))
-      })
-
-      const { error: orgTagsError } = await supabase
-        .from('OrganizationTags')
-        .insert(orgTags)
-
-      if (orgTagsError) throw orgTagsError
-      console.log(`Added tags for organizations in ${account.name}`)
-
       // Create brands for the account
       const brands = [
         {
@@ -856,36 +821,6 @@ async function seedCompanyData() {
         })
 
         await Promise.all(ccPromises)
-
-        // Add tags (1-3 tags per ticket)
-        const availableTags = [
-          'bug',
-          'feature-request',
-          'urgent',
-          'customer-success',
-          'billing',
-          'technical',
-          'documentation',
-          'mobile',
-          'web',
-          'api',
-          'security',
-          'performance'
-        ]
-
-        const numTags = faker.number.int({ min: 1, max: 3 })
-        const selectedTags = faker.helpers.arrayElements(availableTags, numTags)
-        
-        const tagPromises = selectedTags.map(tag => 
-          supabase
-            .from('TicketTags')
-            .insert({
-              ticketId: ticket.ticketId,
-              tag: tag
-            })
-        )
-
-        await Promise.all(tagPromises)
 
         // Add custom field values (if any exist)
         const { data: customFields } = await supabase

@@ -115,6 +115,12 @@ serve(async (req) => {
           Channels (
             type,
             name
+          ),
+          TicketTags (
+            Tags (
+              tagId,
+              name
+            )
           )
         `)
         .eq('ticketId', ticketId)
@@ -198,7 +204,13 @@ serve(async (req) => {
           description,
           status,
           createdAt,
-          updatedAt
+          updatedAt,
+          TicketTags (
+            Tags (
+              tagId,
+              name
+            )
+          )
         `)
         .eq('ticketId', ticketId)
         .eq('requesterId', user.id) // Ensure they can only see their own tickets

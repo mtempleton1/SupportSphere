@@ -7,6 +7,10 @@ import {
   Maximize2,
   ChevronDown,
   ChevronUp,
+  Plus,
+  X,
+  Tag,
+  Search
 } from "lucide-react";
 import { RealtimeEvent, TabEvent } from '../../types/realtime'
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
@@ -63,6 +67,12 @@ interface Ticket {
   }
   channel?: Channel
   description: string
+  TicketTags?: {
+    Tags: {
+      tagId: string
+      name: string
+    }
+  }[]
 }
 
 interface Comment {
@@ -107,6 +117,20 @@ export function TicketView({ ticketId, realtimeEvent, onTabEvent, isActive }: Ti
   const hasScrolledToBottomRef = useRef(false)
   const wasAtBottomRef = useRef(false)
   const lastEventRef = useRef<RealtimeEvent | null>(null)
+  const [tagInput, setTagInput] = useState('');
+  const [isAddingTag, setIsAddingTag] = useState(false);
+
+  // Mock suggested tags - in real implementation, these would come from the backend
+  // const suggestedTags = [
+  //   'urgent',
+  //   'bug',
+  //   'feature-request',
+  //   'documentation',
+  //   'customer-feedback',
+  //   'needs-review',
+  //   'in-progress',
+  //   'blocked'
+  // ].filter(tag => !ticket?.TicketTags?.some(t => t.Tags.name === tag));
 
   // Function to check if scrolled to bottom
   const isAtBottom = () => {
@@ -189,7 +213,7 @@ export function TicketView({ ticketId, realtimeEvent, onTabEvent, isActive }: Ti
       if (apiError) {
         throw new Error(apiError)
       }
-
+      console.log(data)
       if (!data) {
         throw new Error('No data returned from API')
       }
@@ -393,6 +417,58 @@ export function TicketView({ ticketId, realtimeEvent, onTabEvent, isActive }: Ti
         }
       }
     }
+
+    // Handle tag changes
+    if (event.table === 'TicketTags') {
+      const tagPayload = event.eventType === 'DELETE' ? event.payload.old : event.payload.new;
+      // Only process tags for this ticket
+      if (tagPayload.ticketId === ticketId) {
+        if (event.eventType === 'INSERT') {
+          // Fetch the tag details
+          const { data: tagData, error: tagError } = await supabase
+            .from('Tags')
+            .select('tagId, name')
+            .eq('tagId', tagPayload.tagId)
+            .single();
+
+          if (!tagError && tagData) {
+            // Add the new tag to the ticket's tags
+            setTicket(prevTicket => {
+              if (!prevTicket) return prevTicket;
+
+              const newTicketTags = [...(prevTicket.TicketTags || [])];
+              // Only add if not already present
+              if (!newTicketTags.some(tt => tt.Tags.tagId === tagData.tagId)) {
+                newTicketTags.push({
+                  Tags: {
+                    tagId: tagData.tagId,
+                    name: tagData.name
+                  }
+                });
+              }
+
+              return {
+                ...prevTicket,
+                TicketTags: newTicketTags
+              };
+            });
+          }
+        } else if (event.eventType === 'DELETE') {
+          // Remove the tag from the ticket's tags
+          const tagPayloadOld = event.payload.old;
+          setTicket(prevTicket => {
+            if (!prevTicket) return prevTicket;
+
+            return {
+              ...prevTicket,
+              TicketTags: prevTicket.TicketTags?.filter(
+                tt => tt.Tags.tagId !== tagPayloadOld.tagId
+              ) || []
+            };
+          });
+        }
+      }
+    }
   }, [ticketId, onTabEvent]);
 
   // Watch for new realtime events
@@ -447,6 +523,86 @@ export function TicketView({ ticketId, realtimeEvent, onTabEvent, isActive }: Ti
     }
   };
 
+  const handleAddTag = async (tagName: string) => {
+    if (!tagName.trim() || isAddingTag) return;
+
+    try {
+      setIsAddingTag(true);
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('No active session');
+      }
+
+      // First check if tag exists
+      const { data: existingTags, error: searchError } = await supabase
+        .from('Tags')
+        .select('tagId, name')
+        .eq('accountId', account?.accountId)
+        .ilike('name', tagName.trim())
+        .limit(1);
+
+      if (searchError) throw searchError;
+
+      let tagId: string;
+
+      if (existingTags && existingTags.length > 0) {
+        // Use existing tag
+        tagId = existingTags[0].tagId;
+      } else {
+        // Create new tag
+        const { data: newTag, error: createError } = await supabase
+          .from('Tags')
+          .insert({
+            accountId: account?.accountId,
+            name: tagName.trim(),
+            tagType: 'user'
+          })
+          .select('tagId')
+          .single();
+
+        if (createError) throw createError;
+        if (!newTag) throw new Error('Failed to create tag');
+        
+        tagId = newTag.tagId;
+      }
+
+      // Add tag to ticket
+      const { error: attachError } = await supabase
+        .from('TicketTags')
+        .insert({
+          ticketId: ticket?.ticketId,
+          tagId: tagId
+        });
+
+      if (attachError) throw attachError;
+
+      // Clear input
+      setTagInput('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add tag');
+    } finally {
+      setIsAddingTag(false);
+    }
+  };
+
+  const handleRemoveTag = async (tagId: string) => {
+    try {
+      console.log("REMOVING TICKET TAG", tagId)
+      const { error } = await supabase
+        .from('TicketTags')
+        .delete()
+        .match({
+          ticketId: ticket?.ticketId,
+          tagId
+        });
+
+      if (error) throw error;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove tag');
+    }
+  };
+
   if (loading) return <div>Loading...</div>
   if (error) return <div>Error: {error}</div>
   if (!account || !ticket) return <div>Data not found</div>
@@ -498,14 +654,57 @@ export function TicketView({ ticketId, realtimeEvent, onTabEvent, isActive }: Ti
                 </option>
               </select>
             </div>
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">
+                Tags
+              </label>
+              <div className="relative">
+                <div className="flex flex-wrap gap-1 p-2 border rounded bg-white min-h-[38px]">
+                  {ticket.TicketTags && ticket.TicketTags.map(({ Tags }, index) => (
+                    <span
+                      key={index}
+                      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded text-xs group"
+                    >
+                      {Tags.name}
+                      <button 
+                        className="opacity-0 group-hover:opacity-100 hover:text-gray-900"
+                        onClick={() => {
+                          handleRemoveTag(Tags.tagId);
+                        }}
+                      >
+                        <X size={14} />
+                      </button>
+                    </span>
+                  ))}
+                  <input
+                    type="text"
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        if (tagInput.trim()) {
+                          handleAddTag(tagInput);
+                        }
+                      }
+                    }}
+                    className="flex-1 min-w-[60px] outline-none"
+                    placeholder={ticket?.TicketTags?.length ? '' : 'Add tags...'}
+                    disabled={isAddingTag}
+                  />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
       <div className="flex-1 flex flex-col bg-white min-w-0">
         <div className="px-6 py-4 border-b">
-          <h1 className="text-xl font-medium mb-1 text-left">
-            Conversation with {requester?.name || 'Unknown Requester'}
-          </h1>
+          <div className="flex items-center justify-between mb-1">
+            <h1 className="text-xl font-medium text-left">
+              Conversation with {requester?.name || 'Unknown Requester'}
+            </h1>
+          </div>
           <div className="text-sm text-red-500 text-left mb-2">
             Via {ticket.channel?.name?.replace(/\s*Channel\s*/i, '') || ticket.channel?.type?.replace(/_/g, ' ') || 'unknown channel'}
           </div>

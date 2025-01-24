@@ -533,29 +533,9 @@ CREATE TABLE "OrganizationDomains" (
     PRIMARY KEY ("organizationId", "domain")
 );
 
--- Create OrganizationTags Table
-CREATE TABLE "OrganizationTags" (
-    "organizationId" UUID REFERENCES "Organizations"("organizationId") ON DELETE CASCADE,
-    "tag" VARCHAR(50) NOT NULL,
-    "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY ("organizationId", "tag")
-);
 
 -- Create indexes for optimization
 CREATE INDEX idx_org_domains ON "OrganizationDomains"("domain");
-CREATE INDEX idx_org_tags ON "OrganizationTags"("tag");
-
--- Create READ policy for AccountAddOns - users can only read add-ons for their account
--- CREATE POLICY "Users can view add-ons for their account"
--- ON "AccountAddOns" FOR SELECT
--- TO authenticated
--- USING (
---     "accountId" = (
---         SELECT "accountId" 
---         FROM "UserProfiles" 
---         WHERE "userId" = auth.uid()
---     )
--- );
 
 -- -- Create UserGroups Join Table for handling multiple group assignments
 CREATE TABLE "UserGroups" (
@@ -676,6 +656,30 @@ CREATE TABLE "TicketCustomFieldValues" (
     PRIMARY KEY ("ticketId", "fieldId")
 );
 
+-- Create Tags Table
+CREATE TABLE "Tags" (
+    "tagId" UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    "accountId" UUID NOT NULL REFERENCES "Accounts"("accountId") ON DELETE CASCADE,
+    "name" VARCHAR(100) NOT NULL,
+    "tagType" VARCHAR(20) CHECK ("tagType" IN ('user', 'organization', 'group')),
+    "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE("accountId", "name")
+);
+
+-- Create index for tag lookups
+CREATE INDEX idx_tags_account ON "Tags"("accountId");
+CREATE INDEX idx_tags_name ON "Tags"("name");
+
+-- Modify TicketTags table to use tagId
+DROP TABLE IF EXISTS "TicketTags";
+CREATE TABLE "TicketTags" (
+    "ticketId" UUID REFERENCES "Tickets"("ticketId") ON DELETE CASCADE,
+    "tagId" UUID REFERENCES "Tags"("tagId") ON DELETE CASCADE,
+    "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY ("ticketId", "tagId")
+);
+
 -- Create indexes for custom fields
 CREATE INDEX idx_custom_fields_account ON "CustomFields"("accountId");
 CREATE INDEX idx_custom_field_values_field ON "TicketCustomFieldValues"("fieldId");
@@ -746,13 +750,6 @@ CREATE TABLE "TicketCCs" (
     PRIMARY KEY ("ticketId", "userId")
 );
 
--- Create TicketTags Junction Table
-CREATE TABLE "TicketTags" (
-    "ticketId" UUID REFERENCES "Tickets"("ticketId") ON DELETE CASCADE,
-    "tag" VARCHAR(100) NOT NULL,
-    "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY ("ticketId", "tag")
-);
 
 -- Create TicketSharing Junction Table
 CREATE TABLE "TicketSharing" (
@@ -770,7 +767,7 @@ CREATE INDEX idx_tickets_brand ON "Tickets"("brandId");
 CREATE INDEX idx_tickets_status ON "Tickets"("status");
 CREATE INDEX idx_tickets_type ON "Tickets"("type");
 CREATE INDEX idx_comments_ticket ON "TicketComments"("ticketId");
-CREATE INDEX idx_ticket_tags ON "TicketTags"("tag");
+CREATE INDEX idx_ticket_tags ON "TicketTags"("ticketId");
 
 -- Enable RLS for all ticket-related tables
 ALTER TABLE "Tickets" ENABLE ROW LEVEL SECURITY;
@@ -992,86 +989,54 @@ CREATE INDEX idx_channels_brand ON "Channels"("brandId");
 CREATE INDEX idx_tickets_channel ON "Tickets"("channelId");
 
 
--- Create UserTags Junction Table
-CREATE TABLE "UserTags" (
-    "userId" UUID REFERENCES "UserProfiles"("userId") ON DELETE CASCADE,
-    "tag" VARCHAR(100) NOT NULL,
-    "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY ("userId", "tag")
-);
 
--- Create AutomaticTagRules Table for keyword-based tagging
-CREATE TABLE "AutomaticTagRules" (
-    "ruleId" UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    "accountId" UUID NOT NULL REFERENCES "Accounts"("accountId") ON DELETE CASCADE,
-    "name" VARCHAR(255) NOT NULL,
-    "description" TEXT,
-    "keyword" VARCHAR(255) NOT NULL,
-    "tag" VARCHAR(100) NOT NULL,
-    "isActive" BOOLEAN DEFAULT TRUE,
-    "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+-- -- Create AutomaticTagRules Table for keyword-based tagging
+-- CREATE TABLE "AutomaticTagRules" (
+--     "ruleId" UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+--     "accountId" UUID NOT NULL REFERENCES "Accounts"("accountId") ON DELETE CASCADE,
+--     "name" VARCHAR(255) NOT NULL,
+--     "description" TEXT,
+--     "keyword" VARCHAR(255) NOT NULL,
+--     "tag" VARCHAR(100) NOT NULL,
+--     "isActive" BOOLEAN DEFAULT TRUE,
+--     "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+--     "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- );
 
--- Create indexes for tag-based searching
-CREATE INDEX idx_user_tags ON "UserTags"("tag");
-CREATE INDEX idx_auto_tag_rules_account ON "AutomaticTagRules"("accountId");
-CREATE INDEX idx_auto_tag_rules_keyword ON "AutomaticTagRules"("keyword");
+-- -- Create indexes for tag-based searching
+-- CREATE INDEX idx_auto_tag_rules_account ON "AutomaticTagRules"("accountId");
+-- CREATE INDEX idx_auto_tag_rules_keyword ON "AutomaticTagRules"("keyword");
 
--- Create function to automatically propagate user and organization tags to tickets
-CREATE OR REPLACE FUNCTION propagate_tags_to_ticket()
-RETURNS TRIGGER AS $$
-BEGIN
-    -- Add requester's tags to the ticket
-    INSERT INTO "TicketTags" ("ticketId", "tag")
-    SELECT NEW."ticketId", ut."tag"
-    FROM "UserTags" ut
-    WHERE ut."userId" = NEW."requesterId"
-    ON CONFLICT DO NOTHING;
+-- -- -- Create trigger to propagate tags when ticket is created
+-- CREATE TRIGGER propagate_tags_on_ticket_creation
+--     AFTER INSERT ON "Tickets"
+--     FOR EACH ROW
+--     EXECUTE FUNCTION propagate_tags_to_ticket();
 
-    -- Add organization's tags to the ticket if requester belongs to an organization
-    INSERT INTO "TicketTags" ("ticketId", "tag")
-    SELECT NEW."ticketId", ot."tag"
-    FROM "UserProfiles" u
-    JOIN "OrganizationTags" ot ON u."organizationId" = ot."organizationId"
-    WHERE u."userId" = NEW."requesterId"
-    AND u."organizationId" IS NOT NULL
-    ON CONFLICT DO NOTHING;
+-- -- Create function to apply automatic tag rules
+-- CREATE OR REPLACE FUNCTION apply_automatic_tag_rules()
+-- RETURNS TRIGGER AS $$
+-- BEGIN
+--     -- Add tags based on automatic tag rules that match the ticket description
+--     INSERT INTO "TicketTags" ("ticketId", "tag")
+--     SELECT NEW."ticketId", atr."tag"
+--     FROM "AutomaticTagRules" atr
+--     WHERE atr."accountId" = NEW."accountId"
+--     AND atr."isActive" = true
+--     AND NEW."description" ILIKE '%' || atr."keyword" || '%'
+--     ON CONFLICT DO NOTHING;
 
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- -- Create trigger to propagate tags when ticket is created
-CREATE TRIGGER propagate_tags_on_ticket_creation
-    AFTER INSERT ON "Tickets"
-    FOR EACH ROW
-    EXECUTE FUNCTION propagate_tags_to_ticket();
-
--- Create function to apply automatic tag rules
-CREATE OR REPLACE FUNCTION apply_automatic_tag_rules()
-RETURNS TRIGGER AS $$
-BEGIN
-    -- Add tags based on automatic tag rules that match the ticket description
-    INSERT INTO "TicketTags" ("ticketId", "tag")
-    SELECT NEW."ticketId", atr."tag"
-    FROM "AutomaticTagRules" atr
-    WHERE atr."accountId" = NEW."accountId"
-    AND atr."isActive" = true
-    AND NEW."description" ILIKE '%' || atr."keyword" || '%'
-    ON CONFLICT DO NOTHING;
-
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+--     RETURN NEW;
+-- END;
+-- $$ LANGUAGE plpgsql;
 
 -- Create trigger to apply automatic tag rules when ticket is created or updated
-CREATE TRIGGER apply_automatic_tag_rules_on_ticket
-    AFTER INSERT OR UPDATE OF "description" ON "Tickets"
-    FOR EACH ROW
-    EXECUTE FUNCTION apply_automatic_tag_rules();
+-- CREATE TRIGGER apply_automatic_tag_rules_on_ticket
+--     AFTER INSERT OR UPDATE OF "description" ON "Tickets"
+--     FOR EACH ROW
+--     EXECUTE FUNCTION apply_automatic_tag_rules();
 
--- Create MacroCategories Table
+-- -- Create MacroCategories Table
 CREATE TABLE "MacroCategories" (
     "categoryId" UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     "accountId" UUID NOT NULL REFERENCES "Accounts"("accountId") ON DELETE CASCADE,
@@ -2101,15 +2066,6 @@ WITH CHECK (
 
 -- FULL PERMISSIONS
 
--- Enable RLS for UserTags
-ALTER TABLE "UserTags" ENABLE ROW LEVEL SECURITY;
-
--- Create policies for UserTags - Full access for all authenticated users
-CREATE POLICY "Full access to UserTags"
-ON "UserTags" FOR ALL
-TO authenticated
-USING (true)
-WITH CHECK (true);
 
 -- Enable RLS for UserGroups
 ALTER TABLE "UserGroups" ENABLE ROW LEVEL SECURITY;
@@ -2167,16 +2123,6 @@ ALTER TABLE "PlanFeatures" ENABLE ROW LEVEL SECURITY;
 -- Create policies for PlanFeatures - Full access for all authenticated users
 CREATE POLICY "Full access to PlanFeatures"
 ON "PlanFeatures" FOR ALL
-TO authenticated
-USING (true)
-WITH CHECK (true);
-
--- Enable RLS for OrganizationTags
-ALTER TABLE "OrganizationTags" ENABLE ROW LEVEL SECURITY;
-
--- Create policies for OrganizationTags - Full access for all authenticated users
-CREATE POLICY "Full access to OrganizationTags"
-ON "OrganizationTags" FOR ALL
 TO authenticated
 USING (true)
 WITH CHECK (true);
@@ -2291,15 +2237,15 @@ TO authenticated
 USING (true)
 WITH CHECK (true);
 
--- Enable RLS for AutomaticTagRules
-ALTER TABLE "AutomaticTagRules" ENABLE ROW LEVEL SECURITY;
+-- -- Enable RLS for AutomaticTagRules
+-- ALTER TABLE "AutomaticTagRules" ENABLE ROW LEVEL SECURITY;
 
--- Create policies for AutomaticTagRules - Full access for all authenticated users
-CREATE POLICY "Full access to AutomaticTagRules"
-ON "AutomaticTagRules" FOR ALL
-TO authenticated
-USING (true)
-WITH CHECK (true);
+-- -- Create policies for AutomaticTagRules - Full access for all authenticated users
+-- CREATE POLICY "Full access to AutomaticTagRules"
+-- ON "AutomaticTagRules" FOR ALL
+-- TO authenticated
+-- USING (true)
+-- WITH CHECK (true);
 
 -- Enable RLS for Attachments
 ALTER TABLE "Attachments" ENABLE ROW LEVEL SECURITY;
@@ -2396,6 +2342,96 @@ WITH CHECK (
         WHERE t."ticketId" = "TicketTags"."ticketId"
         AND u."userType" = 'end_user'
         AND t."requesterId" = auth.uid()
+    )
+);
+
+
+
+-- Create index for tag lookups
+CREATE INDEX idx_ticket_tags_tag ON "TicketTags"("tagId");
+
+
+-- -- Update AutomaticTagRules table to use tagId
+-- ALTER TABLE "AutomaticTagRules" 
+-- DROP COLUMN "tag",
+-- ADD COLUMN "tagId" UUID REFERENCES "Tags"("tagId") ON DELETE CASCADE;
+
+-- Update the function to propagate tags to ticket
+CREATE OR REPLACE FUNCTION propagate_tags_to_ticket()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Add user-type tags to the ticket from the requester's account
+    INSERT INTO "TicketTags" ("ticketId", "tagId")
+    SELECT NEW."ticketId", t."tagId"
+    FROM "Tags" t
+    WHERE t."accountId" = NEW."accountId"
+    AND t."tagType" = 'user'
+    ON CONFLICT DO NOTHING;
+
+    -- Add organization-type tags to the ticket if requester belongs to an organization
+    INSERT INTO "TicketTags" ("ticketId", "tagId")
+    SELECT NEW."ticketId", t."tagId"
+    FROM "UserProfiles" u
+    JOIN "Tags" t ON t."accountId" = NEW."accountId"
+    WHERE u."userId" = NEW."requesterId"
+    AND u."organizationId" IS NOT NULL
+    AND t."tagType" = 'organization'
+    ON CONFLICT DO NOTHING;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- -- Update the function to apply automatic tag rules
+-- CREATE OR REPLACE FUNCTION apply_automatic_tag_rules()
+-- RETURNS TRIGGER AS $$
+-- BEGIN
+--     -- Add tags based on automatic tag rules that match the ticket description
+--     INSERT INTO "TicketTags" ("ticketId", "tagId")
+--     SELECT NEW."ticketId", atr."tagId"
+--     FROM "AutomaticTagRules" atr
+--     WHERE atr."accountId" = NEW."accountId"
+--     AND atr."isActive" = true
+--     AND NEW."description" ILIKE '%' || atr."keyword" || '%'
+--     ON CONFLICT DO NOTHING;
+
+--     RETURN NEW;
+-- END;
+-- $$ LANGUAGE plpgsql;
+
+-- Enable RLS for Tags
+ALTER TABLE "Tags" ENABLE ROW LEVEL SECURITY;
+
+-- Create SELECT policy for Tags
+CREATE POLICY "Users can view tags in their account"
+ON "Tags" FOR SELECT
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        WHERE u."userId" = auth.uid()
+        AND u."accountId" = "Tags"."accountId"
+    )
+);
+
+-- Create INSERT/UPDATE policy for Tags
+CREATE POLICY "Staff can manage tags in their account"
+ON "Tags" FOR ALL
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        WHERE u."userId" = auth.uid()
+        AND u."userType" = 'staff'
+        AND u."accountId" = "Tags"."accountId"
+    )
+)
+WITH CHECK (
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        WHERE u."userId" = auth.uid()
+        AND u."userType" = 'staff'
+        AND u."accountId" = "Tags"."accountId"
     )
 );
 
