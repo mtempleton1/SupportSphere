@@ -10,6 +10,7 @@ import {
   User,
   ChevronDown,
   LogOut,
+  Ticket,
 } from "lucide-react";
 import { useLocation } from "react-router-dom";
 
@@ -63,8 +64,11 @@ export function AgentHeader({ variant = 'conversation' }: AgentHeaderProps) {
 
   const renderDashboardLeft = () => (
     <div className="flex items-center">
-      <h1 className="text-lg font-medium mr-8">Dashboard</h1>
-      <span className="text-sm text-gray-600 mr-4">
+      <div className="flex items-center gap-2">
+        <Ticket size={20} className="text-gray-600" />
+        <h1 className="text-lg font-medium">Dashboard</h1>
+      </div>
+      <span className="text-sm text-gray-600 ml-8">
         {userName ? userName : 'Loading...'}
       </span>
     </div>

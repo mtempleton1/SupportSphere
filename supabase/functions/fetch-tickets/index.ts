@@ -72,7 +72,13 @@ serve(async (req) => {
       .from('Tickets')
       .select(`
         *,
-        readStatus:TicketReadStatus(lastReadAt)
+        readStatus:TicketReadStatus(lastReadAt),
+        TicketTags(
+          tagId,
+          Tags(
+            name
+          )
+        )
       `)
       .order('updatedAt', { ascending: false })
 

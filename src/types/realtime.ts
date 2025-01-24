@@ -13,6 +13,21 @@ type RealtimeEvent = {
     };
   };
 
+type AgentPresenceState = {
+  userId: string;
+  name: string;
+  email: string;
+  avatarUrl?: string;
+  status?: string;
+  lastActivity: string;
+  isActive: boolean;
+  presence_ref?: string;
+};
+
+type PresenceState = {
+  [key: string]: AgentPresenceState[];
+};
+
 type TabEvent = {
   type: 'TICKET_UPDATE' | 'MESSAGES_READ';
   ticketId: string;
@@ -22,4 +37,17 @@ type TabEvent = {
   };
 };
 
-export type { RealtimeEvent, TabEvent };
+type TicketPresenceState = {
+  userId: string;
+  name: string;
+  avatarUrl?: string;
+  currentSection: 'details' | 'conversation' | 'requester';
+  isTyping: boolean;
+  lastActivity: string;
+};
+
+type TicketPresenceChannelState = {
+  [key: string]: TicketPresenceState[];
+};
+
+export type { RealtimeEvent, TabEvent, AgentPresenceState, PresenceState, TicketPresenceState, TicketPresenceChannelState };

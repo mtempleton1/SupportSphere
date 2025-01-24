@@ -10,10 +10,47 @@ import {
   Plus,
   X,
   Tag,
-  Search
+  Search,
+  Users
 } from "lucide-react";
-import { RealtimeEvent, TabEvent } from '../../types/realtime'
+import { formatDistanceToNow, format } from 'date-fns';
+import { RealtimeEvent, TabEvent, TicketPresenceState } from '../../types/realtime'
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+
+// TimeAgo component to handle relative time display
+function TimeAgo({ timestamp }: { timestamp: string }) {
+  const [relativeTime, setRelativeTime] = useState('');
+  const [fullDateTime, setFullDateTime] = useState('');
+  const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  useEffect(() => {
+    const updateTime = () => {
+      // Parse the UTC timestamp and create a new Date object
+      const utcDate = new Date(timestamp + 'Z'); // Append 'Z' to ensure UTC parsing
+      
+      // Now utcDate will be automatically converted to local time for display
+      setRelativeTime(formatDistanceToNow(utcDate, { addSuffix: true }));
+      setFullDateTime(format(utcDate, 'PPpp'));
+    };
+
+    // Update immediately
+    updateTime();
+
+    // Update every minute
+    const intervalId = setInterval(updateTime, 60000);
+
+    return () => clearInterval(intervalId);
+  }, [timestamp]);
+
+  return (
+    <span 
+      className="text-sm text-gray-500 cursor-help" 
+      title={`${fullDateTime} (${userTimeZone})`}
+    >
+      {relativeTime}
+    </span>
+  );
+}
 
 interface Account {
   accountId: string
@@ -96,11 +133,24 @@ interface Comment {
 interface TicketViewProps {
   ticketId: string;
   realtimeEvent: RealtimeEvent | null;
-  onTabEvent?: (event: TabEvent) => void;
-  isActive?: boolean;
+  onTabEvent: (event: TabEvent) => void;
+  isActive: boolean;
+  currentUserId: string | null;
+  currentViewers: TicketPresenceState[];
+  onSectionChange: (section: 'details' | 'conversation' | 'requester') => void;
+  onTypingChange: (isTyping: boolean) => void;
 }
 
-export function TicketView({ ticketId, realtimeEvent, onTabEvent, isActive }: TicketViewProps) {
+export function TicketView({ 
+  ticketId, 
+  realtimeEvent, 
+  onTabEvent, 
+  isActive, 
+  currentUserId,
+  currentViewers,
+  onSectionChange,
+  onTypingChange 
+}: TicketViewProps) {
   const [account, setAccount] = useState<Account | null>(null)
   const [ticket, setTicket] = useState<Ticket | null>(null)
   const [requester, setRequester] = useState<UserProfile | null>(null)
@@ -111,6 +161,8 @@ export function TicketView({ ticketId, realtimeEvent, onTabEvent, isActive }: Ti
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false)
   const [messageInput, setMessageInput] = useState('')
   const [isSending, setIsSending] = useState(false)
+  const [isCtrlPressed, setIsCtrlPressed] = useState(false)
+  const [isInternalMessage, setIsInternalMessage] = useState(false)
   const [userProfiles, setUserProfiles] = useState<Record<string, UserProfile>>({})
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false)
   const chatContainerRef = useRef<HTMLDivElement>(null)
@@ -118,7 +170,13 @@ export function TicketView({ ticketId, realtimeEvent, onTabEvent, isActive }: Ti
   const wasAtBottomRef = useRef(false)
   const lastEventRef = useRef<RealtimeEvent | null>(null)
   const [tagInput, setTagInput] = useState('');
+  const [tagSuggestions, setTagSuggestions] = useState<{tagId: string, name: string}[]>([]);
+  const [showTagSuggestions, setShowTagSuggestions] = useState(false);
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
+  const searchTimeoutRef = useRef<number | null>(null);
   const [isAddingTag, setIsAddingTag] = useState(false);
+  const [isMessageInputFocused, setIsMessageInputFocused] = useState(false);
+  const [currentSection, setCurrentSection] = useState<'details' | 'conversation' | 'requester'>('conversation');
 
   // Mock suggested tags - in real implementation, these would come from the backend
   // const suggestedTags = [
@@ -213,7 +271,6 @@ export function TicketView({ ticketId, realtimeEvent, onTabEvent, isActive }: Ti
       if (apiError) {
         throw new Error(apiError)
       }
-      console.log(data)
       if (!data) {
         throw new Error('No data returned from API')
       }
@@ -485,7 +542,41 @@ export function TicketView({ ticketId, realtimeEvent, onTabEvent, isActive }: Ti
     wasAtBottomRef.current = isAtBottom();
   }, []);
 
-  const handleSendMessage = async () => {
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (e.ctrlKey) {
+        handleSendMessage(true); // Send as internal
+      } else {
+        handleSendMessage(false); // Send as public
+      }
+    }
+  };
+
+  // Add keyboard event listeners for CTRL key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Control' && isMessageInputFocused) {
+        setIsCtrlPressed(true);
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Control' && isMessageInputFocused) {
+        setIsCtrlPressed(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [isMessageInputFocused]);
+
+  const handleSendMessage = async (forceInternal?: boolean) => {
     if (!messageInput.trim() || isSending) return;
 
     try {
@@ -501,7 +592,7 @@ export function TicketView({ ticketId, realtimeEvent, onTabEvent, isActive }: Ti
         .insert({
           ticketId,
           content: messageInput.trim(),
-          isPublic: true,
+          isPublic: forceInternal ? false : !isInternalMessage,
           authorId: session.user.id,
         });
 
@@ -516,19 +607,119 @@ export function TicketView({ ticketId, realtimeEvent, onTabEvent, isActive }: Ti
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
+  // Debounced tag search
+  const searchTags = async (searchTerm: string) => {
+    if (!searchTerm.trim()) {
+      setTagSuggestions([]);
+      return;
+    }
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
+    const { data: tags, error } = await supabase
+      .from('Tags')
+      .select('tagId, name')
+      .ilike('name', `%${searchTerm}%`)
+      .limit(10);
+
+    if (error) {
+      console.error('Error searching tags:', error);
+      return;
+    }
+
+    // Filter out tags that are already attached to the ticket
+    const filteredTags = tags?.filter(tag => 
+      !ticket?.TicketTags?.some(tt => tt.Tags.tagId === tag.tagId)
+    ) || [];
+
+    setTagSuggestions(filteredTags);
+  };
+
+  // Handle tag input change with debounce
+  const handleTagInputChange = (value: string) => {
+    setTagInput(value);
+    setShowTagSuggestions(true);
+    setSelectedSuggestionIndex(0); // Reset selection when input changes
+
+    // Clear existing timeout
+    if (searchTimeoutRef.current) {
+      window.clearTimeout(searchTimeoutRef.current);
+    }
+
+    // Set new timeout
+    searchTimeoutRef.current = window.setTimeout(() => {
+      searchTags(value);
+    }, 500);
+  };
+
+  // Handle keyboard navigation
+  const handleTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const filteredSuggestions = tagSuggestions.filter(tag => 
+      tag.name.toLowerCase().includes(tagInput.toLowerCase()) &&
+      !ticket?.TicketTags?.some(tt => tt.Tags.tagId === tag.tagId)
+    );
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setSelectedSuggestionIndex(prev => 
+          prev < filteredSuggestions.length - 1 ? prev + 1 : prev
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setSelectedSuggestionIndex(prev => prev > 0 ? prev - 1 : 0);
+        break;
+      case 'Tab':
+        if (showTagSuggestions && filteredSuggestions.length > 0) {
+          e.preventDefault();
+          const selectedTag = filteredSuggestions[selectedSuggestionIndex];
+          handleTagSelect(selectedTag.tagId, selectedTag.name);
+        }
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (tagInput.trim()) {
+          handleAddTag(tagInput.trim());
+        }
+        break;
+      case 'Escape':
+        setShowTagSuggestions(false);
+        break;
     }
   };
 
+  // Handle tag selection
+  const handleTagSelect = async (tagId: string, tagName: string) => {
+    if (isAddingTag || !ticket) return;
+
+    setIsAddingTag(true);
+    try {
+      const { error } = await supabase
+        .from('TicketTags')
+        .insert({
+          ticketId: ticket.ticketId,
+          tagId: tagId
+        });
+
+      if (error) throw error;
+
+      setTagInput('');
+      setShowTagSuggestions(false);
+    } catch (error) {
+      console.error('Error adding tag:', error);
+    } finally {
+      setIsAddingTag(false);
+    }
+  };
+
+  // Handle adding a new tag with the exact input
   const handleAddTag = async (tagName: string) => {
-    if (!tagName.trim() || isAddingTag) return;
+    if (!tagName.trim() || isAddingTag || !ticket) return;
 
     try {
       setIsAddingTag(true);
-      
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         throw new Error('No active session');
@@ -571,7 +762,7 @@ export function TicketView({ ticketId, realtimeEvent, onTabEvent, isActive }: Ti
       const { error: attachError } = await supabase
         .from('TicketTags')
         .insert({
-          ticketId: ticket?.ticketId,
+          ticketId: ticket.ticketId,
           tagId: tagId
         });
 
@@ -579,16 +770,25 @@ export function TicketView({ ticketId, realtimeEvent, onTabEvent, isActive }: Ti
 
       // Clear input
       setTagInput('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add tag');
+      setShowTagSuggestions(false);
+    } catch (error) {
+      console.error('Error adding tag:', error);
     } finally {
       setIsAddingTag(false);
     }
   };
 
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        window.clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const handleRemoveTag = async (tagId: string) => {
     try {
-      console.log("REMOVING TICKET TAG", tagId)
       const { error } = await supabase
         .from('TicketTags')
         .delete()
@@ -603,6 +803,78 @@ export function TicketView({ ticketId, realtimeEvent, onTabEvent, isActive }: Ti
     }
   };
 
+  // Handle section changes
+  useEffect(() => {
+    onSectionChange(currentSection);
+  }, [currentSection, onSectionChange]);
+
+  // Handle typing status
+  useEffect(() => {
+    let typingTimeout: NodeJS.Timeout;
+    
+    const handleTyping = () => {
+      onTypingChange(true);
+      clearTimeout(typingTimeout);
+      typingTimeout = setTimeout(() => onTypingChange(false), 1000);
+    };
+
+    const messageInput = document.querySelector('textarea');
+    if (messageInput) {
+      messageInput.addEventListener('input', handleTyping);
+      return () => {
+        messageInput.removeEventListener('input', handleTyping);
+        clearTimeout(typingTimeout);
+      };
+    }
+  }, [onTypingChange]);
+
+  // Render viewer avatars
+  const renderViewers = () => {
+    if (currentViewers.length === 0) return null;
+
+    return (
+      <div className="flex items-center space-x-1">
+        <Users size={16} className="text-gray-400" />
+        <div className="flex -space-x-2">
+          {currentViewers
+            .filter(viewer => viewer.userId !== currentUserId)
+            .map(viewer => (
+              <div
+                key={viewer.userId}
+                className="relative group"
+              >
+                <div className="w-6 h-6 rounded-full bg-gray-200 border-2 border-white flex items-center justify-center overflow-hidden">
+                  {viewer.avatarUrl ? (
+                    <img 
+                      src={viewer.avatarUrl} 
+                      alt={viewer.name} 
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-xs font-medium">
+                      {viewer.name.charAt(0)}
+                    </span>
+                  )}
+                </div>
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
+                  {viewer.name}
+                  {viewer.isTyping && <span className="ml-1">(typing...)</span>}
+                  <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
+                    <div className="border-4 border-transparent border-t-gray-900"></div>
+                  </div>
+                </div>
+              </div>
+            ))}
+        </div>
+        {currentViewers.length > 1 && (
+          <span className="text-xs text-gray-500">
+            {currentViewers.length} viewing
+          </span>
+        )}
+      </div>
+    );
+  };
+
   if (loading) return <div>Loading...</div>
   if (error) return <div>Error: {error}</div>
   if (!account || !ticket) return <div>Data not found</div>
@@ -615,6 +887,7 @@ export function TicketView({ ticketId, realtimeEvent, onTabEvent, isActive }: Ti
             <span className="font-medium">
               {requester?.name || 'Unknown Requester'}
             </span>
+            {renderViewers()}
           </div>
           <div className="flex items-center space-x-2 mb-4">
             <span>{ticket.subject}</span>
@@ -668,9 +941,7 @@ export function TicketView({ ticketId, realtimeEvent, onTabEvent, isActive }: Ti
                       {Tags.name}
                       <button 
                         className="opacity-0 group-hover:opacity-100 hover:text-gray-900"
-                        onClick={() => {
-                          handleRemoveTag(Tags.tagId);
-                        }}
+                        onClick={() => handleRemoveTag(Tags.tagId)}
                       >
                         <X size={14} />
                       </button>
@@ -679,20 +950,40 @@ export function TicketView({ ticketId, realtimeEvent, onTabEvent, isActive }: Ti
                   <input
                     type="text"
                     value={tagInput}
-                    onChange={(e) => setTagInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        if (tagInput.trim()) {
-                          handleAddTag(tagInput);
-                        }
-                      }
+                    onChange={(e) => handleTagInputChange(e.target.value)}
+                    onFocus={() => setShowTagSuggestions(true)}
+                    onKeyDown={handleTagKeyDown}
+                    onBlur={() => {
+                      // Delay hiding suggestions to allow click events to fire
+                      setTimeout(() => setShowTagSuggestions(false), 200);
                     }}
                     className="flex-1 min-w-[60px] outline-none"
                     placeholder={ticket?.TicketTags?.length ? '' : 'Add tags...'}
                     disabled={isAddingTag}
                   />
                 </div>
+                {showTagSuggestions && tagInput && tagSuggestions.length > 0 && (
+                  <div className="absolute left-0 right-0 mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto z-50">
+                    {tagSuggestions
+                      .filter(tag => 
+                        tag.name.toLowerCase().includes(tagInput.toLowerCase()) &&
+                        !ticket?.TicketTags?.some(tt => tt.Tags.tagId === tag.tagId)
+                      )
+                      .map((tag, index) => (
+                        <div
+                          key={tag.tagId}
+                          className={`px-3 py-2 cursor-pointer text-sm text-left ${
+                            index === selectedSuggestionIndex 
+                              ? 'bg-blue-50 text-blue-700' 
+                              : 'hover:bg-gray-50'
+                          }`}
+                          onClick={() => handleTagSelect(tag.tagId, tag.name)}
+                        >
+                          {tag.name}
+                        </div>
+                      ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -726,35 +1017,41 @@ export function TicketView({ ticketId, realtimeEvent, onTabEvent, isActive }: Ti
         <div className="flex-1 flex flex-col min-h-0">
           <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-6">
             {comments.map((comment) => {
-              // Try to get author info from userProfiles first
               const authorProfile = userProfiles[comment.authorId]
               const authorName = authorProfile?.name || comment.author?.name || 'Unknown User'
+              const isCurrentUser = comment.authorId === currentUserId;
               
               return (
-                <div key={`${comment.id}-${comment.createdAt}`} className="flex space-x-3">
-                  <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0">
-                    {authorProfile?.avatarUrl && (
-                      <img 
-                        src={authorProfile.avatarUrl} 
-                        alt={authorName} 
-                        className="w-full h-full rounded-full object-cover"
-                      />
-                    )}
-                  </div>
-                  <div>
-                    <div className="flex items-center space-x-2 mb-1">
-                      <span className="font-medium">{authorName}</span>
-                      <span className="text-sm text-gray-500">
-                        {new Date(comment.createdAt).toLocaleString()}
-                      </span>
-                      {!comment.isPublic && (
-                        <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
-                          Internal Note
-                        </span>
+                <div key={comment.id} className={`flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'} mb-4`}>
+                  <div className={`flex items-start gap-2 max-w-[85%] ${isCurrentUser ? 'flex-row-reverse' : ''}`}>
+                    <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 flex items-center justify-center">
+                      {authorProfile?.avatarUrl ? (
+                        <img src={authorProfile.avatarUrl} alt={authorName} className="w-8 h-8 rounded-full" />
+                      ) : (
+                        <span className="text-sm">{authorName.charAt(0).toUpperCase()}</span>
                       )}
                     </div>
-                    <div className={`rounded-lg p-3 ${comment.isPublic ? 'bg-blue-50' : 'bg-gray-100'}`}>
-                      <p className="text-left">{comment.content}</p>
+                    <div className={`flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'}`}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-medium">{authorName}</span>
+                        <TimeAgo timestamp={comment.createdAt} />
+                      </div>
+                      <div className={`rounded-lg p-3 ${
+                        !comment.isPublic 
+                          ? 'bg-orange-50/70 relative' 
+                          : isCurrentUser 
+                            ? 'bg-blue-500 text-white' 
+                            : 'bg-blue-50'
+                      }`}>
+                        {!comment.isPublic && (
+                          <div className="text-xs text-orange-700 bg-orange-100 rounded px-1.5 py-0.5 absolute -top-2 left-2">
+                            Internal Note
+                          </div>
+                        )}
+                        <div className={`whitespace-pre-wrap ${isCurrentUser ? 'text-right' : 'text-left'}`}>
+                          {comment.content}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -782,7 +1079,15 @@ export function TicketView({ ticketId, realtimeEvent, onTabEvent, isActive }: Ti
                 rows={3}
                 value={messageInput}
                 onChange={(e) => setMessageInput(e.target.value)}
-                onKeyPress={handleKeyPress}
+                onKeyDown={handleKeyPress}
+                onFocus={() => {
+                  setIsMessageInputFocused(true);
+                  setIsCtrlPressed(false);
+                }}
+                onBlur={() => {
+                  setIsMessageInputFocused(false);
+                  setIsCtrlPressed(false);
+                }}
               />
             </div>
             <div className="flex items-center justify-between px-3 py-2 border-t bg-gray-50">
@@ -796,14 +1101,32 @@ export function TicketView({ ticketId, realtimeEvent, onTabEvent, isActive }: Ti
                 <button className="p-1 hover:bg-gray-100 rounded">
                   <Link2 size={20} />
                 </button>
+                <label className="flex items-center space-x-1 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isInternalMessage}
+                    onChange={(e) => setIsInternalMessage(e.target.checked)}
+                    className="rounded border-gray-300"
+                  />
+                  <span>Internal message</span>
+                </label>
               </div>
-              <button 
-                className={`px-4 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed`}
-                onClick={handleSendMessage}
-                disabled={!messageInput.trim() || isSending}
-              >
-                {isSending ? 'Sending...' : 'Send'}
-              </button>
+              <div className="flex flex-col items-end">
+                <button 
+                  className={`px-4 py-1.5 text-white rounded hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${
+                    isCtrlPressed ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'
+                  }`}
+                  onClick={() => handleSendMessage()}
+                  disabled={!messageInput.trim() || isSending}
+                >
+                  {isSending ? 'Sending...' : isCtrlPressed ? 'Send Internally' : 'Send'}
+                </button>
+                {!isCtrlPressed && !isSending && (
+                  <span className="text-[10px] text-gray-500 mt-0.5">
+                    (CTRL+Enter for private)
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>
