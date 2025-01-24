@@ -7,6 +7,26 @@ import { AgentHeader } from '../components/AgentHeader';
 import { DashboardView } from '../components/views/DashboardView';
 import { TicketView } from '../components/views/TicketView';
 import { NewTabDialog } from '../components/NewTabDialog';
+import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+import type { Database } from '../types/supatypes';
+
+type DatabaseTicket = Database['public']['Tables']['Tickets']['Row'];
+type DatabaseComment = Database['public']['Tables']['TicketComments']['Row'];
+
+type RealtimeEvent = {
+  table: 'Tickets' | 'TicketComments';
+  schema: 'public';
+  eventType: 'INSERT' | 'UPDATE' | 'DELETE';
+  payload: {
+    new: {
+      ticketId: string;
+      [key: string]: any;
+    };
+    old: {
+      [key: string]: any;
+    };
+  };
+};
 
 const getPriorityColor = (priority: TicketPriority | undefined): string => {
   switch (priority) {
@@ -31,6 +51,7 @@ export function AgentWorkspace() {
     activeTabId: null,
   });
   const [isNewTabDialogOpen, setIsNewTabDialogOpen] = useState(false);
+  const [realtimeEvent, setRealtimeEvent] = useState<RealtimeEvent | null>(null);
 
   useEffect(() => {
     async function checkAuth() {
@@ -58,6 +79,101 @@ export function AgentWorkspace() {
       });
     }
   }, [workspace.tabs.length]);
+
+  // Set up centralized realtime subscription
+  useEffect(() => {
+    const setupRealtimeSubscription = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const channel = supabase.channel('workspace-changes')
+        // Listen for ticket changes
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'Tickets',
+          },
+          (payload) => {
+            setRealtimeEvent({
+              table: 'Tickets',
+              schema: 'public',
+              eventType: 'INSERT',
+              payload: {
+                new: payload.new as DatabaseTicket,
+                old: payload.old as DatabaseTicket,
+              },
+            });
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'Tickets',
+          },
+          (payload) => {
+            setRealtimeEvent({
+              table: 'Tickets',
+              schema: 'public',
+              eventType: 'UPDATE',
+              payload: {
+                new: payload.new as DatabaseTicket,
+                old: payload.old as DatabaseTicket,
+              },
+            });
+          }
+        )
+        // Listen for comment changes
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'TicketComments',
+          },
+          (payload) => {
+            setRealtimeEvent({
+              table: 'TicketComments',
+              schema: 'public',
+              eventType: 'INSERT',
+              payload: {
+                new: payload.new as DatabaseComment,
+                old: payload.old as DatabaseComment,
+              },
+            });
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'TicketComments',
+          },
+          (payload) => {
+            setRealtimeEvent({
+              table: 'TicketComments',
+              schema: 'public',
+              eventType: 'UPDATE',
+              payload: {
+                new: payload.new as DatabaseComment,
+                old: payload.old as DatabaseComment,
+              },
+            });
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    };
+
+    setupRealtimeSubscription();
+  }, []);
 
   // Sync URL with active tab
   useEffect(() => {
@@ -187,10 +303,18 @@ export function AgentWorkspace() {
             key={tab.id}
             className={`h-full ${workspace.activeTabId === tab.id ? '' : 'hidden'}`}
           >
-            {tab.type === 'dashboard' && <DashboardView onTicketSelect={(ticketId, subject, priority, ticketNumber) => 
-              openTicketTab(ticketId, subject, priority, ticketNumber)} />}
+            {tab.type === 'dashboard' && (
+              <DashboardView 
+                onTicketSelect={(ticketId, subject, priority, ticketNumber) => 
+                  openTicketTab(ticketId, subject, priority, ticketNumber)} 
+                realtimeEvent={realtimeEvent}
+              />
+            )}
             {tab.type === 'ticket' && tab.data?.ticketId && (
-              <TicketView ticketId={tab.data.ticketId} />
+              <TicketView 
+                ticketId={tab.data.ticketId} 
+                realtimeEvent={realtimeEvent}
+              />
             )}
           </div>
         ))}

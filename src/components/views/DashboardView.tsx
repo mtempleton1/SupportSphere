@@ -13,6 +13,7 @@ import {
 import { supabase } from "../../lib/supabase";
 import type { Database } from "../../types/supatypes";
 import { TicketPriority } from "../../types/workspace";
+import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 type Ticket = Database["public"]["Tables"]["Tickets"]["Row"] & {
   requester: { name: string } | null;
@@ -38,11 +39,21 @@ interface TicketSections {
   low: Ticket[];
 }
 
+type RealtimeEvent = {
+  table: string;
+  schema: string;
+  eventType: 'INSERT' | 'UPDATE' | 'DELETE';
+  payload: RealtimePostgresChangesPayload<{
+    [key: string]: any;
+  }>;
+};
+
 interface DashboardViewProps {
   onTicketSelect: (ticketId: string, subject: string, priority: TicketPriority, ticketNumber: number) => void;
+  realtimeEvent: RealtimeEvent | null;
 }
 
-export function DashboardView({ onTicketSelect }: DashboardViewProps) {
+export function DashboardView({ onTicketSelect, realtimeEvent }: DashboardViewProps) {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [ticketSections, setTicketSections] = useState<TicketSections>({
     requireAction: [],
@@ -63,6 +74,64 @@ export function DashboardView({ onTicketSelect }: DashboardViewProps) {
   const [allSelected, setAllSelected] = useState(false);
   const [isUpdatesPanelOpen, setIsUpdatesPanelOpen] = useState(true);
 
+  // Function to organize tickets into sections
+  const organizeTicketsIntoSections = (ticketsToOrganize: Ticket[], userId: string) => {
+    const sections: TicketSections = {
+      requireAction: [],
+      urgent: [],
+      high: [],
+      normal: [],
+      low: [],
+    };
+
+    ticketsToOrganize.forEach((ticket) => {
+      // Check if ticket is unread and assigned to current user
+      const isUnread = !ticket.readStatus?.lastReadAt || 
+        new Date(ticket.readStatus.lastReadAt) < new Date(ticket.updatedAt || '');
+      const isAssignedToMe = ticket.assigneeId === userId;
+
+      if (isUnread && isAssignedToMe) {
+        sections.requireAction.push(ticket);
+      } else {
+        // Add to priority-based section
+        switch (ticket.priority) {
+          case 'urgent':
+            sections.urgent.push(ticket);
+            break;
+          case 'high':
+            sections.high.push(ticket);
+            break;
+          case 'normal':
+            sections.normal.push(ticket);
+            break;
+          case 'low':
+            sections.low.push(ticket);
+            break;
+          default:
+            sections.normal.push(ticket);
+        }
+      }
+    });
+
+    return sections;
+  };
+
+  // Function to update ticket counts
+  const updateTicketCounts = (ticketsToCount: Ticket[]) => {
+    const counts = ticketsToCount.reduce((acc: Record<string, number>, ticket: Ticket) => {
+      acc[ticket.status as keyof TicketCounts] = (acc[ticket.status as keyof TicketCounts] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    return {
+      open: counts.open || 0,
+      pending: counts.pending || 0,
+      solved: counts.solved || 0,
+      new: counts.new || 0,
+    };
+  };
+
+  // Initial data fetch
   useEffect(() => {
     async function fetchTickets() {
       try {
@@ -70,7 +139,6 @@ export function DashboardView({ onTicketSelect }: DashboardViewProps) {
         if (!session) {
           return;
         }
-        
 
         // Call the fetch-tickets edge function
         const response = await fetch(`${import.meta.env.VITE_SUPABASE_PROJECT_URL}/functions/v1/fetch-tickets`, {
@@ -81,64 +149,14 @@ export function DashboardView({ onTicketSelect }: DashboardViewProps) {
           }
         });
         const { data: transformedTickets, error } = await response.json();
-
+        console.log(transformedTickets)
         if (error) {
           throw new Error(error);
         }
-        console.log(transformedTickets)
-        // Organize tickets into sections
-        const sections: TicketSections = {
-          requireAction: [],
-          urgent: [],
-          high: [],
-          normal: [],
-          low: [],
-        };
 
-        transformedTickets.forEach((ticket: Ticket) => {
-          // Check if ticket is unread and assigned to current user
-          const isUnread = !ticket.readStatus?.lastReadAt || 
-            new Date(ticket.readStatus.lastReadAt) < new Date(ticket.updatedAt || '');
-          const isAssignedToMe = ticket.assigneeId === session.user.id;
-
-          if (isUnread && isAssignedToMe) {
-            sections.requireAction.push(ticket);
-          } else {
-            // Add to priority-based section
-            switch (ticket.priority) {
-              case 'urgent':
-                sections.urgent.push(ticket);
-                break;
-              case 'high':
-                sections.high.push(ticket);
-                break;
-              case 'normal':
-                sections.normal.push(ticket);
-                break;
-              case 'low':
-                sections.low.push(ticket);
-                break;
-              default:
-                sections.normal.push(ticket);
-            }
-          }
-        });
-
-        setTicketSections(sections);
         setTickets(transformedTickets);
-
-        // Calculate ticket counts
-        const counts = transformedTickets.reduce((acc: Record<string, number>, ticket: Ticket) => {
-          acc[ticket.status as keyof TicketCounts] = (acc[ticket.status as keyof TicketCounts] || 0) + 1;
-          return acc;
-        }, {} as Record<string, number>);
-
-        setTicketCounts({
-          open: counts.open || 0,
-          pending: counts.pending || 0,
-          solved: counts.solved || 0,
-          new: counts.new || 0,
-        });
+        setTicketSections(organizeTicketsIntoSections(transformedTickets, session.user.id));
+        setTicketCounts(updateTicketCounts(transformedTickets));
 
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch tickets');
@@ -149,6 +167,59 @@ export function DashboardView({ onTicketSelect }: DashboardViewProps) {
 
     fetchTickets();
   }, []);
+
+  // Handle real-time events
+  useEffect(() => {
+    if (!realtimeEvent) return;
+
+    const handleRealtimeEvent = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      if (realtimeEvent.table === 'Tickets') {
+        // Fetch the updated ticket's full details
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_PROJECT_URL}/functions/v1/fetch-tickets?ticketId=${realtimeEvent.payload.new.ticketId}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        
+        const { data: ticketData, error } = await response.json();
+        if (error) {
+          console.error('Error fetching ticket:', error);
+          return;
+        }
+
+        if (ticketData && ticketData.length > 0) {
+          const updatedTicket = ticketData[0];
+          
+          setTickets(prevTickets => {
+            let updatedTickets;
+            if (realtimeEvent.eventType === 'INSERT') {
+              updatedTickets = [...prevTickets, updatedTicket];
+            } else if (realtimeEvent.eventType === 'UPDATE') {
+              updatedTickets = prevTickets.map(ticket => 
+                ticket.ticketId === updatedTicket.ticketId ? updatedTicket : ticket
+              );
+            } else {
+              return prevTickets;
+            }
+
+            // Update sections and counts based on the new tickets array
+            setTicketSections(organizeTicketsIntoSections(updatedTickets, session.user.id));
+            setTicketCounts(updateTicketCounts(updatedTickets));
+            return updatedTickets;
+          });
+        }
+      }
+    };
+
+    handleRealtimeEvent();
+  }, [realtimeEvent]);
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {

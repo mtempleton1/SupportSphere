@@ -130,7 +130,7 @@ serve(async (req) => {
         // Get UserProfile data
         const { data: requesterProfile, error: requesterProfileError } = await adminClient
           .from('UserProfiles')
-          .select('userId, name, userType')
+          .select('userId, name, userType, email')
           .eq('userId', ticket.requesterId)
           .single()
         // Get email from auth user if it matches the requester
@@ -147,6 +147,7 @@ serve(async (req) => {
             email: requesterProfile.email
           }
         }
+        console.log("HERE", requesterData)
       }
 
       // Fetch assignee data using adminClient if assigned
@@ -154,7 +155,7 @@ serve(async (req) => {
         // Get UserProfile data
         const { data: assigneeProfile, error: assigneeProfileError } = await adminClient
           .from('UserProfiles')
-          .select('userId, name, userType')
+          .select('userId, name, userType, email')
           .eq('userId', ticket.assigneeId)
           .single()
 

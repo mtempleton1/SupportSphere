@@ -2351,3 +2351,51 @@ TO authenticated
 USING (true)
 WITH CHECK (true);
 
+-- Enable RLS for TicketTags
+ALTER TABLE "TicketTags" ENABLE ROW LEVEL SECURITY;
+
+-- Create SELECT policy - Staff can read ticket tags in their account
+CREATE POLICY "Staff can read ticket tags in their account"
+ON "TicketTags" FOR SELECT
+TO authenticated
+USING (
+    -- Staff can read tags for tickets in their account
+    EXISTS (
+        SELECT 1 FROM "Tickets" t
+        JOIN "UserProfiles" u ON u."userId" = auth.uid()
+        WHERE t."ticketId" = "TicketTags"."ticketId"
+        AND u."userType" = 'staff'
+        AND u."accountId" = t."accountId"
+    )
+);
+
+-- Create INSERT policy - Staff can add tags to tickets in their account
+CREATE POLICY "Staff can add ticket tags in their account"
+ON "TicketTags" FOR INSERT
+TO authenticated
+WITH CHECK (
+    -- Staff can add tags to tickets in their account
+    EXISTS (
+        SELECT 1 FROM "Tickets" t
+        JOIN "UserProfiles" u ON u."userId" = auth.uid()
+        WHERE t."ticketId" = "TicketTags"."ticketId"
+        AND u."userType" = 'staff'
+        AND u."accountId" = t."accountId"
+    )
+);
+
+-- Create INSERT policy - End users can add tags to their own tickets
+CREATE POLICY "End users can add tags to their own tickets"
+ON "TicketTags" FOR INSERT
+TO authenticated
+WITH CHECK (
+    -- End users can add tags to tickets where they are the requester
+    EXISTS (
+        SELECT 1 FROM "Tickets" t
+        JOIN "UserProfiles" u ON u."userId" = auth.uid()
+        WHERE t."ticketId" = "TicketTags"."ticketId"
+        AND u."userType" = 'end_user'
+        AND t."requesterId" = auth.uid()
+    )
+);
+
