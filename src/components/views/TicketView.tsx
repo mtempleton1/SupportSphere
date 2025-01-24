@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import {
   Paperclip,
@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
+import { RealtimeEvent } from '../../types/realtime'
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 interface Account {
@@ -73,14 +74,14 @@ interface Comment {
   author: UserProfile
 }
 
-type RealtimeEvent = {
-  table: string;
-  schema: string;
-  eventType: 'INSERT' | 'UPDATE' | 'DELETE';
-  payload: RealtimePostgresChangesPayload<{
-    [key: string]: any;
-  }>;
-};
+// type RealtimeEvent = {
+//   table: string;
+//   schema: string;
+//   eventType: 'INSERT' | 'UPDATE' | 'DELETE';
+//   payload: RealtimePostgresChangesPayload<{
+//     [key: string]: any;
+//   }>;
+// };
 
 interface TicketViewProps {
   ticketId: string;
@@ -96,6 +97,49 @@ export function TicketView({ ticketId, realtimeEvent }: TicketViewProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false)
+  const [messageInput, setMessageInput] = useState('')
+  const [isSending, setIsSending] = useState(false)
+  const [userProfiles, setUserProfiles] = useState<Record<string, UserProfile>>({})
+  const chatContainerRef = useRef<HTMLDivElement>(null)
+  const hasScrolledToBottomRef = useRef(false)
+  const wasAtBottomRef = useRef(false)
+
+  // Function to check if scrolled to bottom
+  const isAtBottom = () => {
+    const container = chatContainerRef.current
+    if (!container) return false
+    
+    const threshold = 50 // pixels from bottom to consider "at bottom"
+    return container.scrollHeight - container.scrollTop - container.clientHeight <= threshold
+  }
+
+  // Function to scroll to bottom
+  const scrollToBottom = () => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
+    }
+  }
+
+  // Initial scroll after data loads - only once
+  useEffect(() => {
+    if (!loading && comments.length > 0 && !hasScrolledToBottomRef.current) {
+      scrollToBottom()
+      hasScrolledToBottomRef.current = true
+    }
+  }, [loading, comments.length])
+
+  // Add scroll event listener to track if user is at bottom
+  useEffect(() => {
+    const container = chatContainerRef.current
+    if (!container) return
+
+    const handleScroll = () => {
+      wasAtBottomRef.current = isAtBottom()
+    }
+
+    container.addEventListener('scroll', handleScroll)
+    return () => container.removeEventListener('scroll', handleScroll)
+  }, [])
 
   // Function to fetch ticket data
   const fetchTicketData = async (session: any) => {
@@ -130,6 +174,43 @@ export function TicketView({ ticketId, realtimeEvent }: TicketViewProps) {
     }
   }
 
+  // Function to fetch user profile
+  const fetchUserProfile = async (userId: string, session: any) => {
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_PROJECT_URL}/functions/v1/fetch-user?userId=${userId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+
+      const { data, error } = await response.json()
+      if (error) throw new Error(error)
+      
+      // Add the user profile to local storage
+      setUserProfiles(prev => ({
+        ...prev,
+        [userId]: data
+      }))
+      
+      return data
+    } catch (err) {
+      console.error(`Failed to fetch user profile for ${userId}:`, err)
+      return null
+    }
+  }
+
+  // Function to get user profile (from local storage or fetch)
+  const getUserProfile = async (userId: string, session: any) => {
+    if (userProfiles[userId]) {
+      return userProfiles[userId]
+    }
+    return await fetchUserProfile(userId, session)
+  }
+
   // Initial data fetch
   useEffect(() => {
     async function initializeTicketData() {
@@ -159,6 +240,9 @@ export function TicketView({ ticketId, realtimeEvent }: TicketViewProps) {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
 
+      // Store scroll position state before updates
+      wasAtBottomRef.current = isAtBottom()
+
       // Handle ticket updates
       if (realtimeEvent.table === 'Tickets' && 
           realtimeEvent.eventType === 'UPDATE' && 
@@ -167,15 +251,99 @@ export function TicketView({ ticketId, realtimeEvent }: TicketViewProps) {
       }
       
       // Handle comment changes
-      if (realtimeEvent.table === 'TicketComments' && 
-          (realtimeEvent.eventType === 'INSERT' || realtimeEvent.eventType === 'UPDATE') && 
-          realtimeEvent.payload.new.ticketId === ticketId) {
-        await fetchTicketData(session);
+      if (realtimeEvent.table === 'TicketComments') {
+        const commentPayload = realtimeEvent.payload.new;
+        
+        // Only process comments for this ticket
+        if (commentPayload.ticketId === ticketId) {
+          if (realtimeEvent.eventType === 'INSERT') {
+            // Get the author profile
+            const authorProfile = await getUserProfile(commentPayload.authorId, session);
+            
+            if (authorProfile) {
+              // Add the new comment to state
+              const newComment: Comment = {
+                id: commentPayload.commentId,
+                content: commentPayload.content,
+                isPublic: commentPayload.isPublic,
+                createdAt: commentPayload.createdAt,
+                authorId: commentPayload.authorId,
+                author: {
+                  id: commentPayload.authorId,
+                  name: authorProfile.name,
+                  email: authorProfile.email,
+                  role: authorProfile.role,
+                  avatarUrl: authorProfile.avatarUrl
+                }
+              };
+
+              setComments(prevComments => {
+                const newComments = [...prevComments, newComment]
+                // Schedule a scroll to bottom for after render if we were at bottom
+                if (wasAtBottomRef.current) {
+                  setTimeout(scrollToBottom, 0)
+                }
+                return newComments
+              });
+            }
+          } else if (realtimeEvent.eventType === 'UPDATE') {
+            // Update the existing comment
+            setComments(prevComments => 
+              prevComments.map(comment => 
+                comment.id === commentPayload.commentId
+                  ? {
+                      ...comment,
+                      content: commentPayload.content,
+                      isPublic: commentPayload.isPublic,
+                    }
+                  : comment
+              )
+            );
+          }
+        }
       }
     };
 
     handleRealtimeEvent();
   }, [realtimeEvent, ticketId]);
+
+  const handleSendMessage = async () => {
+    if (!messageInput.trim() || isSending) return;
+
+    try {
+      setIsSending(true);
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('No active session');
+      }
+
+      const { error: insertError } = await supabase
+        .from('TicketComments')
+        .insert({
+          ticketId,
+          content: messageInput.trim(),
+          isPublic: true,
+          authorId: session.user.id,
+        });
+
+      if (insertError) throw insertError;
+
+      // Clear the input
+      setMessageInput('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send message');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
 
   if (loading) return <div>Loading...</div>
   if (error) return <div>Error: {error}</div>
@@ -254,7 +422,7 @@ export function TicketView({ ticketId, realtimeEvent }: TicketViewProps) {
             </button>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-6">
           {/* Comments */}
           {comments.map((comment) => (
             <div key={`${comment.id}-${comment.createdAt}`} className="flex space-x-3">
@@ -280,7 +448,7 @@ export function TicketView({ ticketId, realtimeEvent }: TicketViewProps) {
                   )}
                 </div>
                 <div className={`rounded-lg p-3 ${comment.isPublic ? 'bg-blue-50' : 'bg-gray-100'}`}>
-                  <p>{comment.content}</p>
+                  <p className="text-left">{comment.content}</p>
                 </div>
               </div>
             </div>
@@ -293,6 +461,9 @@ export function TicketView({ ticketId, realtimeEvent }: TicketViewProps) {
                 placeholder="Write a message..."
                 className="w-full resize-none focus:outline-none"
                 rows={3}
+                value={messageInput}
+                onChange={(e) => setMessageInput(e.target.value)}
+                onKeyPress={handleKeyPress}
               />
             </div>
             <div className="flex items-center justify-between px-3 py-2 border-t bg-gray-50">
@@ -307,8 +478,12 @@ export function TicketView({ ticketId, realtimeEvent }: TicketViewProps) {
                   <Link2 size={20} />
                 </button>
               </div>
-              <button className="px-4 py-1.5 bg-green-600 text-white rounded hover:bg-green-700">
-                Send
+              <button 
+                className={`px-4 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed`}
+                onClick={handleSendMessage}
+                disabled={!messageInput.trim() || isSending}
+              >
+                {isSending ? 'Sending...' : 'Send'}
               </button>
             </div>
           </div>
