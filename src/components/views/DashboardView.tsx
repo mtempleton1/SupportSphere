@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { format } from "timeago.js";
 import {
   Home,
@@ -39,14 +39,14 @@ interface TicketSections {
   low: Ticket[];
 }
 
-type RealtimeEvent = {
-  table: string;
-  schema: string;
-  eventType: 'INSERT' | 'UPDATE' | 'DELETE';
-  payload: RealtimePostgresChangesPayload<{
-    [key: string]: any;
-  }>;
-};
+// type RealtimeEvent = {
+//   table: string;
+//   schema: string;
+//   eventType: 'INSERT' | 'UPDATE' | 'DELETE';
+//   payload: RealtimePostgresChangesPayload<{
+//     [key: string]: any;
+//   }>;
+// };
 
 interface DashboardViewProps {
   onTicketSelect: (ticketId: string, subject: string, priority: TicketPriority, ticketNumber: number) => void;
@@ -73,6 +73,19 @@ export function DashboardView({ onTicketSelect, realtimeEvent }: DashboardViewPr
   const [selectedTickets, setSelectedTickets] = useState<Set<string>>(new Set());
   const [allSelected, setAllSelected] = useState(false);
   const [isUpdatesPanelOpen, setIsUpdatesPanelOpen] = useState(true);
+  const [columnWidths, setColumnWidths] = useState({
+    checkbox: 48, // w-12
+    status: 90,   // w-[90px]
+    subject: 30,  // 30%
+    requester: 15,// 15%
+    updated: 15,  // 15%
+    group: 15,    // 15%
+    assignee: 15  // 15%
+  });
+  const [resizing, setResizing] = useState<string | null>(null);
+  const [startX, setStartX] = useState(0);
+  const [startWidth, setStartWidth] = useState(0);
+  const tableRef = useRef<HTMLTableElement>(null);
 
   // Function to organize tickets into sections
   const organizeTicketsIntoSections = (ticketsToOrganize: Ticket[], userId: string) => {
@@ -292,7 +305,7 @@ export function DashboardView({ onTicketSelect, realtimeEvent }: DashboardViewPr
             key={ticket.ticketId} 
             className="border-t hover:bg-gray-50 cursor-pointer h-12"
           >
-            <td className="py-3 px-4 w-12">
+            <td className="py-3 px-4" style={{ width: columnWidths.checkbox }}>
               <div className="flex items-center justify-center">
                 <input
                   type="checkbox"
@@ -305,7 +318,7 @@ export function DashboardView({ onTicketSelect, realtimeEvent }: DashboardViewPr
                 />
               </div>
             </td>
-            <td className="py-3 px-4 w-[90px] text-left" onClick={() => onTicketSelect(ticket.ticketId, ticket.subject, ticket.priority, ticket.ticketNumber)}>
+            <td className="py-3 px-4 text-left" style={{ width: columnWidths.status }} onClick={() => onTicketSelect(ticket.ticketId, ticket.subject, ticket.priority, ticket.ticketNumber)}>
               <div className="flex items-start space-x-2 overflow-visible">
                 <div className="relative group">
                   <Circle 
@@ -323,7 +336,7 @@ export function DashboardView({ onTicketSelect, realtimeEvent }: DashboardViewPr
                 <span className="text-blue-600 flex-shrink-0">#{ticket.ticketNumber}</span>
               </div>
             </td>
-            <td className="py-3 px-4 w-1/4 text-left relative group" onClick={() => onTicketSelect(ticket.ticketId, ticket.subject, ticket.priority, ticket.ticketNumber)}>
+            <td className="py-3 px-4 text-left relative group" style={{ width: `${columnWidths.subject}%` }} onClick={() => onTicketSelect(ticket.ticketId, ticket.subject, ticket.priority, ticket.ticketNumber)}>
               <span className="truncate block">{ticket.subject}</span>
               <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 invisible group-hover:visible bg-gray-900 text-white text-xs rounded py-1 px-2 whitespace-nowrap">
                 Created {new Date(ticket.createdAt || '').toLocaleString()}
@@ -332,10 +345,10 @@ export function DashboardView({ onTicketSelect, realtimeEvent }: DashboardViewPr
                 </div>
               </div>
             </td>
-            <td className="py-3 px-4 text-left" onClick={() => onTicketSelect(ticket.ticketId, ticket.subject, ticket.priority, ticket.ticketNumber)}>
+            <td className="py-3 px-4 text-left" style={{ width: `${columnWidths.requester}%` }} onClick={() => onTicketSelect(ticket.ticketId, ticket.subject, ticket.priority, ticket.ticketNumber)}>
               <span className="truncate block">{ticket.requester?.name || 'Unknown'}</span>
             </td>
-            <td className="py-3 px-4 text-left relative group" onClick={() => onTicketSelect(ticket.ticketId, ticket.subject, ticket.priority, ticket.ticketNumber)}>
+            <td className="py-3 px-4 text-left relative group" style={{ width: `${columnWidths.updated}%` }} onClick={() => onTicketSelect(ticket.ticketId, ticket.subject, ticket.priority, ticket.ticketNumber)}>
               <span className="truncate block">{format(ticket.updatedAt || '')}</span>
               <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 invisible group-hover:visible bg-gray-900 text-white text-xs rounded py-1 px-2 whitespace-nowrap">
                 {new Date(ticket.updatedAt || '').toLocaleString()}
@@ -344,10 +357,10 @@ export function DashboardView({ onTicketSelect, realtimeEvent }: DashboardViewPr
                 </div>
               </div>
             </td>
-            <td className="py-3 px-4 text-left" onClick={() => onTicketSelect(ticket.ticketId, ticket.subject, ticket.priority, ticket.ticketNumber)}>
+            <td className="py-3 px-4 text-left" style={{ width: `${columnWidths.group}%` }} onClick={() => onTicketSelect(ticket.ticketId, ticket.subject, ticket.priority, ticket.ticketNumber)}>
               <span className="truncate block">{ticket.assigneeGroup?.name || ''}</span>
             </td>
-            <td className="py-3 px-4 text-left" onClick={() => onTicketSelect(ticket.ticketId, ticket.subject, ticket.priority, ticket.ticketNumber)}>
+            <td className="py-3 px-4 text-left" style={{ width: `${columnWidths.assignee}%` }} onClick={() => onTicketSelect(ticket.ticketId, ticket.subject, ticket.priority, ticket.ticketNumber)}>
               <span className="truncate block">{ticket.assignee?.name || ''}</span>
             </td>
           </tr>
@@ -355,6 +368,40 @@ export function DashboardView({ onTicketSelect, realtimeEvent }: DashboardViewPr
       </>
     );
   };
+
+  const handleResizeStart = (e: React.MouseEvent, columnId: string, initialWidth: number) => {
+    e.preventDefault();
+    setResizing(columnId);
+    setStartX(e.clientX);
+    setStartWidth(initialWidth);
+  };
+
+  const handleResizeMove = (e: MouseEvent) => {
+    if (!resizing) return;
+
+    const diff = e.clientX - startX;
+    const newWidth = Math.max(50, startWidth + diff); // Minimum width of 50px
+
+    setColumnWidths(prev => ({
+      ...prev,
+      [resizing]: resizing.includes('%') ? (newWidth / (tableRef.current?.clientWidth || 1)) * 100 : newWidth
+    }));
+  };
+
+  const handleResizeEnd = () => {
+    setResizing(null);
+  };
+
+  useEffect(() => {
+    if (resizing) {
+      window.addEventListener('mousemove', handleResizeMove);
+      window.addEventListener('mouseup', handleResizeEnd);
+      return () => {
+        window.removeEventListener('mousemove', handleResizeMove);
+        window.removeEventListener('mouseup', handleResizeEnd);
+      };
+    }
+  }, [resizing, startX, startWidth]);
 
   if (loading) return <div>Loading...</div>;
   if (error) return <div>Error: {error}</div>;
@@ -459,35 +506,84 @@ export function DashboardView({ onTicketSelect, realtimeEvent }: DashboardViewPr
           {/* Scrollable Content */}
           <div className="flex-1 overflow-y-auto px-6 pb-6">
             <div className="bg-white rounded-lg border p-4" style={{ overflow: 'visible' }}>
-              <table className="w-full">
-                <thead className="bg-gray-50 text-sm text-gray-500 sticky top-0">
-                  <tr>
-                    <th className="py-3 px-4 text-left font-medium w-12">
-                      <div className="flex items-center justify-center">
-                        <input
-                          type="checkbox"
-                          className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 transition-all duration-150 ease-in-out cursor-pointer hover:border-blue-400"
-                          checked={allSelected}
-                          onChange={(e) => handleSelectAll(e.target.checked)}
-                        />
-                      </div>
-                    </th>
-                    <th className="py-3 px-4 text-left font-medium w-[90px]"></th>
-                    <th className="py-3 px-4 text-left font-medium w-1/4">Subject</th>
-                    <th className="py-3 px-4 text-left font-medium w-1/5">Requester</th>
-                    <th className="py-3 px-4 text-left font-medium w-1/5">Requester updated</th>
-                    <th className="py-3 px-4 text-left font-medium w-1/5">Group</th>
-                    <th className="py-3 px-4 text-left font-medium w-1/5">Assignee</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {renderTicketSection('Require Action', ticketSections.requireAction)}
-                  {renderTicketSection('Urgent Tickets', ticketSections.urgent)}
-                  {renderTicketSection('High Priority', ticketSections.high)}
-                  {renderTicketSection('Normal Priority', ticketSections.normal)}
-                  {renderTicketSection('Low Priority', ticketSections.low)}
-                </tbody>
-              </table>
+              <div className="overflow-auto">
+                <table ref={tableRef} className="w-full table-fixed relative" style={{ minWidth: '600px' }}>
+                  <thead className="bg-gray-50 text-sm text-gray-500 sticky top-0">
+                    <tr className="relative">
+                      <th className="py-3 px-4 text-left font-medium" style={{ width: columnWidths.checkbox }}>
+                        <div className="flex items-center justify-center">
+                          <input
+                            type="checkbox"
+                            className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 transition-all duration-150 ease-in-out cursor-pointer hover:border-blue-400"
+                            checked={allSelected}
+                            onChange={(e) => handleSelectAll(e.target.checked)}
+                          />
+                        </div>
+                        <div
+                          className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-500 group"
+                          onMouseDown={(e) => handleResizeStart(e, 'checkbox', columnWidths.checkbox)}
+                        >
+                          <div className="absolute inset-y-0 right-0 w-4 -translate-x-1/2 group-hover:bg-blue-500/10" />
+                        </div>
+                      </th>
+                      <th className="py-3 px-4 text-left font-medium relative" style={{ width: columnWidths.status }}>
+                        <div
+                          className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-500 group"
+                          onMouseDown={(e) => handleResizeStart(e, 'status', columnWidths.status)}
+                        >
+                          <div className="absolute inset-y-0 right-0 w-4 -translate-x-1/2 group-hover:bg-blue-500/10" />
+                        </div>
+                      </th>
+                      <th className="py-3 px-4 text-left font-medium relative" style={{ width: `${columnWidths.subject}%` }}>
+                        Subject
+                        <div
+                          className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-500 group"
+                          onMouseDown={(e) => handleResizeStart(e, 'subject', columnWidths.subject)}
+                        >
+                          <div className="absolute inset-y-0 right-0 w-4 -translate-x-1/2 group-hover:bg-blue-500/10" />
+                        </div>
+                      </th>
+                      <th className="py-3 px-4 text-left font-medium relative" style={{ width: `${columnWidths.requester}%` }}>
+                        Requester
+                        <div
+                          className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-500 group"
+                          onMouseDown={(e) => handleResizeStart(e, 'requester', columnWidths.requester)}
+                        >
+                          <div className="absolute inset-y-0 right-0 w-4 -translate-x-1/2 group-hover:bg-blue-500/10" />
+                        </div>
+                      </th>
+                      <th className="py-3 px-4 text-left font-medium relative" style={{ width: `${columnWidths.updated}%` }}>
+                        Requester updated
+                        <div
+                          className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-500 group"
+                          onMouseDown={(e) => handleResizeStart(e, 'updated', columnWidths.updated)}
+                        >
+                          <div className="absolute inset-y-0 right-0 w-4 -translate-x-1/2 group-hover:bg-blue-500/10" />
+                        </div>
+                      </th>
+                      <th className="py-3 px-4 text-left font-medium relative" style={{ width: `${columnWidths.group}%` }}>
+                        Group
+                        <div
+                          className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-500 group"
+                          onMouseDown={(e) => handleResizeStart(e, 'group', columnWidths.group)}
+                        >
+                          <div className="absolute inset-y-0 right-0 w-4 -translate-x-1/2 group-hover:bg-blue-500/10" />
+                        </div>
+                      </th>
+                      <th className="py-3 px-4 text-left font-medium relative" style={{ width: `${columnWidths.assignee}%` }}>
+                        Assignee
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {renderTicketSection('Require Action', ticketSections.requireAction)}
+                    {renderTicketSection('Urgent Tickets', ticketSections.urgent)}
+                    {renderTicketSection('High Priority', ticketSections.high)}
+                    {renderTicketSection('Normal Priority', ticketSections.normal)}
+                    {renderTicketSection('Low Priority', ticketSections.low)}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
