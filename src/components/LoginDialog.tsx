@@ -81,7 +81,7 @@ export const LoginDialog = ({
     if (isOpen) {
       if (type === 'staff') {
         loadStaffMembers();
-      } else if (type === 'user' && import.meta.env.DEV) {
+      } else if (type === 'user') {
         loadEndUsers();
       }
     }
