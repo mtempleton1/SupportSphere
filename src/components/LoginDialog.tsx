@@ -2,20 +2,20 @@ import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { X, Circle, UserCircle } from "lucide-react";
 import { supabase } from "../lib/supabase";
-import { createClient } from '@supabase/supabase-js';
+// import { createClient } from '@supabase/supabase-js';
 import type { PresenceState } from '../types/realtime';
 
 // Determine if we're in Vite or Node environment
-const isViteEnvironment = typeof import.meta?.env !== 'undefined';
+// const isViteEnvironment = typeof import.meta?.env !== 'undefined';
 
 // Get environment variables based on environment
-const supabaseUrl = isViteEnvironment ? 
-  import.meta.env.VITE_SUPABASE_PROJECT_URL : 
-  process.env.VITE_SUPABASE_PROJECT_URL;
+// const supabaseUrl = isViteEnvironment ? 
+//   import.meta.env.VITE_SUPABASE_PROJECT_URL : 
+//   process.env.VITE_SUPABASE_PROJECT_URL;
 
-const serviceKey = isViteEnvironment ? 
-  import.meta.env.VITE_SUPABASE_SERVICE_KEY : 
-  process.env.SUPABASE_SERVICE_KEY;
+// const serviceKey = isViteEnvironment ? 
+//   import.meta.env.VITE_SUPABASE_SERVICE_KEY : 
+//   process.env.SUPABASE_SERVICE_KEY;
 
 interface UserProfile {
   userId: string;
