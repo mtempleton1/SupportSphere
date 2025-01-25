@@ -6,10 +6,10 @@ interface HeaderProps {
   onStaffLogin: () => void;
   onUserLogin: () => void;
   accountName: string;
-  showCreateTicket?: boolean;
-  onCreateTicket?: () => void;
+  showCreateTicket: boolean;
+  onCreateTicket: () => void;
   endUserAccountCreationType: 'submit_ticket' | 'sign_up';
-  accountId: string;
+  subdomain: string;
 }
 
 export const Header = ({
@@ -19,7 +19,7 @@ export const Header = ({
   showCreateTicket,
   onCreateTicket,
   endUserAccountCreationType,
-  accountId,
+  subdomain,
 }: HeaderProps) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -61,7 +61,7 @@ export const Header = ({
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setShowDropdown(false);
-    window.location.href = `/${accountId}`;
+    window.location.href = `/${subdomain}`;
   };
 
   return (

@@ -79,7 +79,8 @@ serve(async (req) => {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
       )
     }
-
+    console.log('userProfile', userProfile)
+    console.log(loginType, userProfile.userType, accountId, userProfile.accountId )
     // Verify account and user type match
     if (userProfile.accountId !== accountId || 
         (loginType === 'staff' && userProfile.userType !== 'staff') ||

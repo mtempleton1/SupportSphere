@@ -39,7 +39,7 @@ interface Ticket {
 
 export function AccountHome() {
   const navigate = useNavigate()
-  const { accountId } = useParams<{ accountId: string }>()
+  const { subdomain } = useParams<{ subdomain: string }>()
   const [account, setAccount] = useState<Account | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -54,7 +54,7 @@ export function AccountHome() {
   const handleOpenUserLogin = () => setLoginType("user");
   const handleCloseLogin = () => setLoginType(undefined);
   const handleCreateTicket = () => {
-    navigate(`/${accountId}/tickets/new`);
+    navigate(`/${subdomain}/tickets/new`);
   };
 
   // Set up realtime subscription
@@ -162,18 +162,18 @@ export function AccountHome() {
         const { data: { session } } = await supabase.auth.getSession()
         setIsAuthenticated(!!session)
 
-        if (!accountId) {
-          setError('Invalid account')
+        if (!subdomain) {
+          setError('Invalid subdomain')
           return
         }
 
         const { data, error } = await supabase
           .from('Accounts')
           .select('accountId, name, subdomain, endUserAccountCreationType')
-          .eq('subdomain', accountId)
+          .eq('subdomain', subdomain)
           .single()
 
-        if (error) setError(`Failed to fetch account: ${accountId}`)
+        if (error) setError(`Failed to fetch account: ${subdomain}`)
         setAccount(data)
       } catch (err) {
         setError(err instanceof Error ? err.message : `Failed to fetch account`)
@@ -192,7 +192,7 @@ export function AccountHome() {
     return () => {
       subscription.unsubscribe()
     }
-  }, [accountId])
+  }, [subdomain])
 
   if (loading) return <div>Loading...</div>
   if (error) return <div>Error: {error}</div>
@@ -207,7 +207,7 @@ export function AccountHome() {
         showCreateTicket={account.endUserAccountCreationType === 'submit_ticket'}
         onCreateTicket={handleCreateTicket}
         endUserAccountCreationType={account.endUserAccountCreationType}
-        accountId={account.subdomain}
+        subdomain={account.subdomain}
       />
       <SearchBar />
       <div className="flex-grow flex flex-col relative">

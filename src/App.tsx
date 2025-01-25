@@ -12,7 +12,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/:accountId">
+        <Route path="/:subdomain">
           <Route index element={<AccountHome />} />
           <Route path="tickets/new" element={<TicketCreate />} />
           <Route path="user" element={<EndUserPage />} />
