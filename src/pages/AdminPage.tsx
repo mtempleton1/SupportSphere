@@ -11,15 +11,15 @@ interface Account {
   endUserAccountCreationType: 'submit_ticket' | 'sign_up'
 }
 
-type RoleCategory = 'end_user' | 'agent' | 'admin' | 'owner'
+// type RoleCategory = 'end_user' | 'agent' | 'admin' | 'owner'
 
-interface UserProfile {
-  userType: 'staff' | 'end_user'
-  roleId: string
-  Roles: {
-    roleCategory: RoleCategory
-  }
-}
+// interface UserProfile {
+//   userType: 'staff' | 'end_user'
+//   roleId: string
+//   Roles: {
+//     roleCategory: RoleCategory
+//   }
+// }
 
 export function AdminPage() {
   const navigate = useNavigate()
@@ -62,9 +62,7 @@ export function AdminPage() {
 
         if (userError) throw userError
 
-        if (userProfile.userType !== 'staff' || 
-            (userProfile.Roles?.roleCategory !== 'admin' && 
-             userProfile.Roles?.roleCategory !== 'owner')) {
+        if (userProfile.userType !== 'staff') {
           navigate(`/${accountId}`)
           return
         }

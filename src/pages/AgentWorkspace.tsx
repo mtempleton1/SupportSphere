@@ -33,7 +33,7 @@ const getPriorityColor = (priority: TicketPriority | undefined): string => {
 export function AgentWorkspace() {
   const navigate = useNavigate();
   const { accountId } = useParams<{ accountId: string }>();
-  const [error, setError] = useState<string | null>(null);
+  // const [error, setError] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceState>({
     tabs: [],
     activeTabId: null,
