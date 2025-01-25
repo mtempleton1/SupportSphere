@@ -195,6 +195,7 @@ export const LoginDialog = ({
         .select('accountId')
         .eq('subdomain', subdomain)
         .single();
+      console.log("ACCOUNT", account)
 
       if (accountError) throw accountError;
       setAccountId(account.accountId);
@@ -211,6 +212,7 @@ export const LoginDialog = ({
         throw new Error('No end users found');
       }
 
+      console.log("END USERS", response.data)
       setEndUsers(response.data);
 
     } catch (err) {
