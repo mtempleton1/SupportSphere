@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Header } from "../components/Header"
 import { Footer } from "../components/Footer"
@@ -23,6 +23,7 @@ interface UserProfile {
 
 export function AdminPage() {
   const navigate = useNavigate()
+  const { accountId } = useParams<{ accountId: string }>()
   const [account, setAccount] = useState<Account | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -32,77 +33,51 @@ export function AdminPage() {
       try {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) {
-          navigate('/')
+          navigate(`/${accountId}`)
           return
         }
 
-        // Get role information from user metadata
-        const userType = session.user.user_metadata?.userType
-        const roleCategory = session.user.user_metadata?.roleCategory
-
-        // If metadata is not in user_metadata, try to get it from the login response data
-        if (!userType || !roleCategory) {
-          const { data, error: userError } = await supabase
-            .from('UserProfiles')
-            .select('userType, roleId, Roles!inner(roleCategory)')
-            .eq('userId', session.user.id)
-            .single()
-            
-
-          if (userError) throw userError
-
-          // Cast the data to unknown first to handle type mismatch
-          const userProfile = data as unknown as UserProfile
-          const roleCategory = userProfile.Roles.roleCategory
-
-          if (userProfile.userType !== 'staff' || 
-              (roleCategory !== 'admin' && roleCategory !== 'owner')) {
-            // If they're an agent, send them to the agent page
-            console.log("hello?")
-            if (userProfile.userType === 'staff' && roleCategory === 'agent') {
-              navigate('/agent')
-            } else {
-              console.log("ugh")
-              navigate('/')
-            }
-            return
-          }
-        } else {
-          if (userType !== 'staff' || 
-              (roleCategory !== 'admin' && roleCategory !== 'owner')) {
-            // If they're an agent, send them to the agent page
-            if (userType === 'staff' && roleCategory === 'agent') {
-              navigate('/agent')
-            } else {
-              navigate('/')
-            }
-            return
-          }
+        if (!accountId) {
+          setError('Invalid account')
+          return
         }
 
-        // Get subdomain from hostname
-        const hostname = window.location.hostname
-        const subdomain = hostname.split('.')[0]
-
+        // Get account
         const { data: account, error: accountError } = await supabase
           .from('Accounts')
           .select('accountId, name, subdomain, endUserAccountCreationType')
-          .eq('subdomain', subdomain)
+          .eq('subdomain', accountId)
           .single()
 
         if (accountError) throw accountError
         setAccount(account)
 
+        // Verify user is an admin for this account
+        const { data: userProfile, error: userError } = await supabase
+          .from('UserProfiles')
+          .select('userType, roleId, Roles!inner(roleCategory)')
+          .eq('userId', session.user.id)
+          .eq('accountId', account.accountId)
+          .single()
+
+        if (userError) throw userError
+
+        if (userProfile.userType !== 'staff' || 
+            (userProfile.Roles?.roleCategory !== 'admin' && 
+             userProfile.Roles?.roleCategory !== 'owner')) {
+          navigate(`/${accountId}`)
+          return
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch account')
-        navigate('/')
+        navigate(`/${accountId}`)
       } finally {
         setLoading(false)
       }
     }
 
     checkAuthAndAccount()
-  }, [navigate])
+  }, [navigate, accountId])
 
   if (loading) return <div>Loading...</div>
   if (error) return <div>Error: {error}</div>
@@ -117,6 +92,7 @@ export function AdminPage() {
         endUserAccountCreationType={account.endUserAccountCreationType}
         onStaffLogin={() => {}}
         onUserLogin={() => {}}
+        accountId={account.subdomain}
       />
       <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="bg-white rounded-lg shadow-sm p-8">

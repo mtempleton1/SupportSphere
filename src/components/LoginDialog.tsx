@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { X, Circle, UserCircle } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { createClient } from '@supabase/supabase-js';
@@ -50,6 +50,7 @@ export const LoginDialog = ({
   accountType: 'submit_ticket' | 'sign_up';
 }) => {
   const navigate = useNavigate();
+  const { accountId } = useParams<{ accountId: string }>();
   const [mode, setMode] = useState<'login' | 'signup' | 'reset'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -84,14 +85,15 @@ export const LoginDialog = ({
 
   const loadStaffMembers = async () => {
     try {
-      const hostname = window.location.hostname;
-      const subdomain = hostname.split('.')[0];
+      if (!accountId) {
+        throw new Error('No account ID provided');
+      }
       
       // Get account
       const { data: account, error: accountError } = await supabase
         .from('Accounts')
         .select('accountId')
-        .eq('subdomain', subdomain)
+        .eq('subdomain', accountId)
         .single();
 
       if (accountError) throw accountError;
@@ -158,7 +160,7 @@ export const LoginDialog = ({
 
       if (loginError) throw loginError;
 
-      navigate('/agent');
+      navigate(`/${accountId}/agent`);
       onClose();
     } catch (err) {
       console.error('Auto-login failed:', err);
@@ -170,14 +172,15 @@ export const LoginDialog = ({
 
   const loadEndUsers = async () => {
     try {
-      const hostname = window.location.hostname;
-      const subdomain = hostname.split('.')[0];
+      if (!accountId) {
+        throw new Error('No account ID provided');
+      }
       
       // Get account
       const { data: account, error: accountError } = await supabase
         .from('Accounts')
         .select('accountId')
-        .eq('subdomain', subdomain)
+        .eq('subdomain', accountId)
         .single();
 
       if (accountError) throw accountError;
@@ -221,7 +224,7 @@ export const LoginDialog = ({
 
       if (loginError) throw loginError;
 
-      navigate('/user');
+      navigate(`/${accountId}/user`);
       onClose();
     } catch (err) {
       console.error('Auto-login failed:', err);
@@ -329,24 +332,16 @@ export const LoginDialog = ({
     setLoading(true);
 
     try {
-      // First, get the account ID from the hostname
-      const hostname = window.location.hostname;
-      const subdomain = hostname.split('.')[0];
-      const { data: account, error: accountError } = await supabase
-        .from('Accounts')
-        .select('accountId')
-        .eq('subdomain', subdomain)
-        .single();
-
-      if (accountError) throw accountError;
-
+      if (!accountId) {
+        throw new Error('No account ID provided');
+      }
       
       // Call the login edge function
       const { data: loginData, error: loginError } = await supabase.functions.invoke('login', {
         body: {
           email,
           password,
-          accountId: account.accountId,
+          accountId,
           loginType: type
         }
       });
@@ -365,14 +360,14 @@ export const LoginDialog = ({
       if (type === 'staff') {
         const roleCategory = loginData.session.user.user_metadata.roleCategory;
         if (roleCategory === 'admin' || roleCategory === 'owner') {
-          navigate('/admin');
+          navigate(`/${accountId}/admin`);
         } else if (roleCategory === 'agent') {
-          navigate('/agent');
+          navigate(`/${accountId}/agent`);
         } else {
           throw new Error('Invalid staff role');
         }
       } else {
-        navigate('/user');
+        navigate(`/${accountId}/user`);
       }
 
       onClose();
@@ -406,17 +401,10 @@ export const LoginDialog = ({
         return;
       }
 
-      // Get the account ID from the hostname
-      const hostname = window.location.hostname;
-      const subdomain = hostname.split('.')[0];
-      const { data: account, error: accountError } = await supabase
-        .from('Accounts')
-        .select('accountId')
-        .eq('subdomain', subdomain)
-        .single();
-
-      if (accountError) throw accountError;
-
+      if (!accountId) {
+        throw new Error('No account ID provided');
+      }
+      
       // Create user profile
       const { error: profileError } = await supabase
         .from('UserProfiles')
@@ -425,14 +413,14 @@ export const LoginDialog = ({
             userId: session.user.id,
             name: fullName,
             userType: 'end_user',
-            accountId: account.accountId,
+            accountId,
             isEmailVerified: false,
           }
         ]);
 
       if (profileError) throw profileError;
 
-      navigate('/user');
+      navigate(`/${accountId}/user`);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');

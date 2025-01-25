@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Tab, WorkspaceState, TicketPriority } from '../types/workspace';
 import { X, Circle, Plus } from 'lucide-react';
@@ -32,7 +32,8 @@ const getPriorityColor = (priority: TicketPriority | undefined): string => {
 
 export function AgentWorkspace() {
   const navigate = useNavigate();
-  // const [searchParams, setSearchParams] = useSearchParams();
+  const { accountId } = useParams<{ accountId: string }>();
+  const [error, setError] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceState>({
     tabs: [],
     activeTabId: null,
@@ -655,6 +656,7 @@ export function AgentWorkspace() {
       <div className="bg-gray-100">
         <AgentHeader
           variant={workspace.tabs.find(tab => tab.id === workspace.activeTabId)?.type === 'dashboard' ? 'dashboard' : 'conversation'}
+          accountId={accountId || ''}
         />
       </div>
 
