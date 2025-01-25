@@ -171,10 +171,10 @@ export function AccountHome() {
           .eq('subdomain', subdomain)
           .single()
 
-        if (error) throw error
+        if (error) setError(`Failed to fetch account: ${subdomain}`)
         setAccount(data)
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch account')
+        setError(err instanceof Error ? err.message : `Failed to fetch account`)
       } finally {
         setLoading(false)
       }
