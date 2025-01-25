@@ -16,10 +16,10 @@ import {
 
 interface AgentHeaderProps {
   variant?: 'dashboard' | 'conversation';
-  accountId: string;
+  subdomain: string;
 }
 
-export function AgentHeader({ variant = 'conversation', accountId }: AgentHeaderProps) {
+export function AgentHeader({ variant = 'conversation', subdomain }: AgentHeaderProps) {
   const [showDropdown, setShowDropdown] = useState(false);
   const [userName, setUserName] = useState<string>('');
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -60,7 +60,7 @@ export function AgentHeader({ variant = 'conversation', accountId }: AgentHeader
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setShowDropdown(false);
-    window.location.href = `/${accountId}`;
+    window.location.href = `/${subdomain}`;
   };
 
   const renderDashboardLeft = () => (

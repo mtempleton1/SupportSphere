@@ -5,12 +5,14 @@ import { TicketCreate } from './pages/TicketCreate'
 import { EndUserPage } from './pages/EndUserPage'
 import { AgentWorkspace } from './pages/AgentWorkspace'
 import { AdminPage } from './pages/AdminPage'
+import { SupportSphereHome } from './pages/SupportSphereHome'
 import './App.css'
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/" element={<SupportSphereHome />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/:subdomain">
           <Route index element={<AccountHome />} />
