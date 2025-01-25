@@ -237,7 +237,7 @@ export const LoginDialog = ({
   if (!isOpen) return null;
 
   // Render staff selection buttons in development mode
-  if (type === 'staff') {
+  if (import.meta.env.DEV && type === 'staff') {
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
         <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
@@ -286,7 +286,7 @@ export const LoginDialog = ({
   }
 
   // Render end user selection buttons in development mode
-  if (type === 'user') {
+  if (import.meta.env.DEV && type === 'user') {
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
         <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
