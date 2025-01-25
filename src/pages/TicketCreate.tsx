@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Header } from "../components/Header";
 import { Footer } from "../components/Footer";
@@ -58,6 +58,7 @@ const isValidEmail = (email: string) => {
 
 export function TicketCreate() {
   const navigate = useNavigate()
+  const { accountId } = useParams<{ accountId: string }>()
   const [account, setAccount] = useState<Account | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -83,14 +84,15 @@ export function TicketCreate() {
   useEffect(() => {
     async function checkAuthAndAccount() {
       try {
-        // Get subdomain from hostname
-        const hostname = window.location.hostname
-        const subdomain = hostname.split('.')[0]
+        if (!accountId) {
+          setError('Invalid account')
+          return
+        }
 
         const { data: account, error: accountError } = await supabase
           .from('Accounts')
           .select('accountId, name, subdomain, endUserAccountCreationType')
-          .eq('subdomain', subdomain)
+          .eq('subdomain', accountId)
           .single()
 
         if (accountError) throw accountError
@@ -100,10 +102,9 @@ export function TicketCreate() {
 
         // If account type is 'sign_up', check authentication
         if (account.endUserAccountCreationType === 'sign_up') {
-          
           if (!session) {
             // Redirect if not authenticated
-            navigate('/')
+            navigate(`/${accountId}`)
             return
           }
           // Set user email if authenticated
@@ -120,7 +121,7 @@ export function TicketCreate() {
     }
 
     checkAuthAndAccount()
-  }, [navigate])
+  }, [navigate, accountId])
 
   const validateForm = (): boolean => {
     const errors: FormErrors = {};
@@ -159,18 +160,19 @@ export function TicketCreate() {
 
     setIsSubmitting(true);
     try {
-      // Get subdomain from hostname
-      const subdomain = window.location.hostname.split('.')[0];
+      if (!accountId) {
+        throw new Error('No account ID provided');
+      }
 
       const response = await supabase.functions.invoke<CreateTicketResponse>('create-ticket', {
         body: {
-          email: userEmail || formState.email, // Use userEmail if available, otherwise use form email
+          email: userEmail || formState.email,
           reason: formState.reason === 'Other' ? formState.customSubject : formState.reason,
           content: formState.content,
           channelType: 'help_center'
         },
         headers: {
-          'x-subdomain': subdomain
+          'x-subdomain': accountId
         }
       });
 
@@ -216,7 +218,7 @@ export function TicketCreate() {
 
         // Show success message
         alert('Ticket successfully created');
-        navigate('/');
+        navigate(`/${accountId}`);
       }
       
     } catch (error) {
@@ -257,6 +259,7 @@ export function TicketCreate() {
         showCreateTicket={false}
         onCreateTicket={() => {}}
         endUserAccountCreationType={account.endUserAccountCreationType}
+        accountId={account.subdomain}
       />
       <main className="flex-grow max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12 w-full">
         <div className="bg-white rounded-lg shadow-sm p-8">
