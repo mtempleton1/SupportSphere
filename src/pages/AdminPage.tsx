@@ -62,10 +62,10 @@ export function AdminPage() {
 
         if (userError) throw userError
 
-        if (userProfile.userType !== 'staff') {
-          navigate(`/${subdomain}`)
-          return
-        }
+        // Redirect all users to the agent workspace
+        navigate(`/${subdomain}/agent`)
+        return
+
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch account')
         navigate(`/${subdomain}`)
@@ -77,9 +77,9 @@ export function AdminPage() {
     checkAuthAndAccount()
   }, [navigate, subdomain])
 
-  if (loading) return <div>Loading...</div>
+  // Since we're always redirecting, we can simplify the loading states
+  if (loading || !account) return <div>Redirecting...</div>
   if (error) return <div>Error: {error}</div>
-  if (!account) return <div>Account not found</div>
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -95,7 +95,7 @@ export function AdminPage() {
       <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="bg-white rounded-lg shadow-sm p-8">
           <h1 className="text-2xl font-bold text-gray-900 mb-6">
-            Admin Dashboard
+            Redirecting to Agent Workspace...
           </h1>
         </div>
       </main>

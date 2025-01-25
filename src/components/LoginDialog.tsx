@@ -17,13 +17,16 @@ const serviceKey = isViteEnvironment ?
   import.meta.env.VITE_SUPABASE_SERVICE_KEY : 
   process.env.SUPABASE_SERVICE_KEY;
 
-// interface UserProfile {
-//   userType: 'staff' | 'end_user';
-//   roleId: string;
-//   Roles: {
-//     roleCategory: 'end_user' | 'agent' | 'admin' | 'owner';
-//   };
-// }
+interface UserProfile {
+  userId: string;
+  email: string;
+  name: string;
+  userType: 'staff' | 'end_user';
+  roleId: string;
+  Roles?: {
+    roleCategory: 'end_user' | 'agent' | 'admin' | 'owner';
+  };
+}
 
 interface StaffMember {
   userId: string;
@@ -100,14 +103,6 @@ export const LoginDialog = ({
       if (accountError) throw accountError;
       setAccountId(account.accountId);
 
-      // Create admin client
-      const adminClient = createClient(supabaseUrl, serviceKey, {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false
-        }
-      });
-
       // Get current presence state
       const presenceChannel = supabase.channel('agents_presence');
       await presenceChannel.subscribe();
@@ -120,19 +115,22 @@ export const LoginDialog = ({
           .map(presence => presence.userId)
       );
 
-      // Get all staff members
-      const { data: staffProfiles, error: profileError } = await adminClient
-        .from('UserProfiles')
-        .select('userId, email, name')
-        .eq('accountId', account.accountId)
-        .eq('userType', 'staff');
+      // Get all staff members using the edge function
+      const { data: response, error: profileError } = await supabase.functions.invoke('get-account-users', {
+        body: {
+          accountId: account.accountId,
+          userType: 'staff'
+        }
+      });
 
-      if (profileError || !staffProfiles) {
+      console.log("STAFF PROFILES", response)
+      console.log("PROFILE ERROR", profileError)
+      if (profileError || !response?.data) {
         throw new Error('No staff members found');
       }
 
       // Map staff profiles with online status
-      const members = staffProfiles.map(profile => ({
+      const members = response.data.map((profile: UserProfile) => ({
         userId: profile.userId,
         email: profile.email,
         name: profile.name,
@@ -155,12 +153,25 @@ export const LoginDialog = ({
     setError(null);
     
     try {
-      const { error: loginError } = await supabase.auth.signInWithPassword({
-        email: staffMember.email,
-        password: 'Password123!'
+      // Call the login edge function
+      const { data: loginData, error: loginError } = await supabase.functions.invoke('login', {
+        body: {
+          email: staffMember.email,
+          password: 'Password123!',
+          accountId,
+          loginType: 'staff'
+        }
       });
 
       if (loginError) throw loginError;
+
+      // Set the session in the client
+      const { error: sessionError } = await supabase.auth.setSession({
+        access_token: loginData.session.access_token,
+        refresh_token: loginData.session.refresh_token
+      });
+
+      if (sessionError) throw sessionError;
 
       navigate(`/${subdomain}/agent`);
       onClose();
@@ -188,26 +199,19 @@ export const LoginDialog = ({
       if (accountError) throw accountError;
       setAccountId(account.accountId);
 
-      // Create admin client
-      const adminClient = createClient(supabaseUrl, serviceKey, {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false
+      // Get all end users using the edge function
+      const { data: response, error: profileError } = await supabase.functions.invoke('get-account-users', {
+        body: {
+          accountId: account.accountId,
+          userType: 'end_user'
         }
       });
 
-      // Get all end users
-      const { data: userProfiles, error: profileError } = await adminClient
-        .from('UserProfiles')
-        .select('userId, email, name')
-        .eq('accountId', account.accountId)
-        .eq('userType', 'end_user');
-
-      if (profileError || !userProfiles) {
+      if (profileError || !response?.data) {
         throw new Error('No end users found');
       }
 
-      setEndUsers(userProfiles);
+      setEndUsers(response.data);
 
     } catch (err) {
       console.error('Failed to load end users:', err);
@@ -220,12 +224,25 @@ export const LoginDialog = ({
     setError(null);
     
     try {
-      const { error: loginError } = await supabase.auth.signInWithPassword({
-        email: endUser.email,
-        password: 'Password123!'
+      // Call the login edge function
+      const { data: loginData, error: loginError } = await supabase.functions.invoke('login', {
+        body: {
+          email: endUser.email,
+          password: 'Password123!',
+          accountId,
+          loginType: 'end_user'
+        }
       });
 
       if (loginError) throw loginError;
+
+      // Set the session in the client
+      const { error: sessionError } = await supabase.auth.setSession({
+        access_token: loginData.session.access_token,
+        refresh_token: loginData.session.refresh_token
+      });
+
+      if (sessionError) throw sessionError;
 
       navigate(`/${subdomain}/user`);
       onClose();
@@ -240,7 +257,7 @@ export const LoginDialog = ({
   if (!isOpen) return null;
 
   // Render staff selection buttons in development mode
-  if (import.meta.env.DEV && type === 'staff') {
+  if (type === 'staff') {
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
         <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
@@ -289,7 +306,7 @@ export const LoginDialog = ({
   }
 
   // Render end user selection buttons in development mode
-  if (import.meta.env.DEV && type === 'user') {
+  if (type === 'user') {
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
         <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">

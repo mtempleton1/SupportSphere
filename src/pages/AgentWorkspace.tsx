@@ -32,7 +32,7 @@ const getPriorityColor = (priority: TicketPriority | undefined): string => {
 
 export function AgentWorkspace() {
   const navigate = useNavigate();
-  const { accountId } = useParams<{ accountId: string }>();
+  const { subdomain } = useParams<{ subdomain: string }>();
   // const [error, setError] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceState>({
     tabs: [],
@@ -119,7 +119,7 @@ export function AgentWorkspace() {
     async function checkAuth() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        navigate('/');
+        navigate(`/${subdomain}`);
         return;
       }
       setCurrentUserId(session.user.id);
@@ -187,7 +187,7 @@ export function AgentWorkspace() {
         });
       }
     };
-  }, [navigate]);
+  }, [navigate, subdomain]);
 
   // Initialize dashboard tab if no tabs exist
   useEffect(() => {
@@ -656,7 +656,7 @@ export function AgentWorkspace() {
       <div className="bg-gray-100">
         <AgentHeader
           variant={workspace.tabs.find(tab => tab.id === workspace.activeTabId)?.type === 'dashboard' ? 'dashboard' : 'conversation'}
-          accountId={accountId || ''}
+          subdomain={subdomain || ''}
         />
       </div>
 
