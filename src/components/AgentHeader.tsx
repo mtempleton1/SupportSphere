@@ -12,7 +12,7 @@ import {
   LogOut,
   Ticket,
 } from "lucide-react";
-import { useLocation } from "react-router-dom";
+// import { useLocation } from "react-router-dom";
 
 interface AgentHeaderProps {
   variant?: 'dashboard' | 'conversation';
