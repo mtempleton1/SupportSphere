@@ -35,12 +35,12 @@ type Ticket = Database["public"]["Tables"]["Tickets"]["Row"] & {
   }[];
 };
 
-interface TicketCounts {
-  open: number;
-  pending: number;
-  solved: number;
-  new: number;
-}
+// interface TicketCounts {
+//   open: number;
+//   pending: number;
+//   solved: number;
+//   new: number;
+// }
 
 interface TicketSections {
   requireAction: Ticket[];

@@ -144,7 +144,7 @@ export function TicketView({
   isActive, 
   currentUserId,
   currentViewers,
-  onSectionChange,
+  // onSectionChange,
   onTypingChange 
 }: TicketViewProps) {
   const [account, setAccount] = useState<Account | null>(null)
@@ -172,7 +172,7 @@ export function TicketView({
   const searchTimeoutRef = useRef<number | null>(null);
   const [isAddingTag, setIsAddingTag] = useState(false);
   const [isMessageInputFocused, setIsMessageInputFocused] = useState(false);
-  const [currentSection, setCurrentSection] = useState<'details' | 'conversation' | 'requester'>('conversation');
+  // const [currentSection, setCurrentSection] = useState<'details' | 'conversation' | 'requester'>('conversation');
 
   // Mock suggested tags - in real implementation, these would come from the backend
   // const suggestedTags = [
@@ -800,9 +800,9 @@ export function TicketView({
   };
 
   // Handle section changes
-  useEffect(() => {
-    onSectionChange(currentSection);
-  }, [currentSection, onSectionChange]);
+  // useEffect(() => {
+  //   onSectionChange(currentSection);
+  // }, [currentSection, onSectionChange]);
 
   // Handle typing status
   useEffect(() => {

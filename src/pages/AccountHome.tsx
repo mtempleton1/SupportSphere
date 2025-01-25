@@ -29,13 +29,13 @@ interface Ticket {
   requesterId: string;
 }
 
-interface TicketComment {
-  commentId: string;
-  content: string;
-  isPublic: boolean;
-  createdAt: string;
-  authorId: string;
-}
+// interface TicketComment {
+//   commentId: string;
+//   content: string;
+//   isPublic: boolean;
+//   createdAt: string;
+//   authorId: string;
+// }
 
 export function AccountHome() {
   const navigate = useNavigate()
@@ -45,8 +45,8 @@ export function AccountHome() {
   const [loginType, setLoginType] = useState<"staff" | "user" | undefined>(undefined);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [ticket, setTicket] = useState<Ticket | null>(null);
-  const [comments, setComments] = useState<TicketComment[]>([]);
-  const [ticketLoading, setTicketLoading] = useState(false);
+  // const [comments, setComments] = useState<TicketComment[]>([]);
+  // const [ticketLoading, setTicketLoading] = useState(false);
   const [realtimeEvent, setRealtimeEvent] = useState<RealtimeEvent | null>(null);
   
   const handleOpenStaffLogin = () => setLoginType("staff");
@@ -117,7 +117,7 @@ export function AccountHome() {
       if (!isAuthenticated) return;
       
       try {
-        setTicketLoading(true);
+        // setTicketLoading(true);
         
         // Call the fetch-tickets edge function
         const { data: response, error: fetchError } = await supabase.functions.invoke('fetch-tickets');
@@ -133,21 +133,21 @@ export function AccountHome() {
             setTicket(openTicket);
             
             // Fetch comments for this ticket
-            const { data: commentsData, error: commentsError } = await supabase
-              .from('TicketComments')
-              .select('*')
-              .eq('ticketId', openTicket.ticketId)
-              .eq('isPublic', true)
-              .order('createdAt', { ascending: true });
+            // const { data: commentsData, error: commentsError } = await supabase
+            //   .from('TicketComments')
+            //   .select('*')
+            //   .eq('ticketId', openTicket.ticketId)
+            //   .eq('isPublic', true)
+            //   .order('createdAt', { ascending: true });
 
-            if (commentsError) throw commentsError;
-            setComments(commentsData || []);
+            // if (commentsError) throw commentsError;
+            // setComments(commentsData || []);
           }
         }
       } catch (err) {
         console.error('Error fetching tickets:', err);
       } finally {
-        setTicketLoading(false);
+        // setTicketLoading(false);
       }
     }
 

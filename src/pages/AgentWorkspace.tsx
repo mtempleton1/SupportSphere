@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Tab, WorkspaceState, TicketPriority } from '../types/workspace';
 import { X, Circle, Plus } from 'lucide-react';
