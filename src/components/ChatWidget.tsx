@@ -3,15 +3,15 @@ import { MessageCircle, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { RealtimeEvent } from '../types/realtime';
 
-interface Brand {
-  brandId: string;
-  name: string;
-}
+// interface Brand {
+//   brandId: string;
+//   name: string;
+// }
 
-interface Channel {
-  type: string;
-  name: string;
-}
+// interface Channel {
+//   type: string;
+//   name: string;
+// }
 
 interface Comment {
   commentId: string;

@@ -49,7 +49,7 @@ export function EndUserPage() {
 
         if (userError) throw userError
 
-        if (userProfile.userType !== 'end_user' || userProfile.Roles.roleCategory !== 'end_user') {
+        if (userProfile.userType !== 'end_user') {
           navigate('/')
           return
         }

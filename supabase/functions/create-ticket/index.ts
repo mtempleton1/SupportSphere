@@ -122,6 +122,8 @@ serve(async (req) => {
     const adminClient = createClient(supabaseUrl, supabaseServiceKey)
 
     // Get auth header to check if user is already authenticated
+    const authHeader = req.headers.get('authorization')
+    const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.replace('Bearer ', '') : null
 
     // Use service role to get account and related data
     const { data: account, error: accountError } = await adminClient
@@ -130,7 +132,7 @@ serve(async (req) => {
       .eq('subdomain', subdomain)
       .single()
 
-      if (accountError || !account) {
+    if (accountError || !account) {
       throw new Error('Account not found')
     }
 
@@ -147,7 +149,7 @@ serve(async (req) => {
       .eq('isDefault', true)
       .single()
 
-      if (brandError || !brand) {
+    if (brandError || !brand) {
       throw new Error('Default brand not found')
     }
   
@@ -159,7 +161,7 @@ serve(async (req) => {
       .eq('type', 'help_center')
       .single()
 
-      let channelId: string
+    let channelId: string
     if (channelError) {
       // Create help center channel
       const { data: newChannel, error: createChannelError } = await adminClient
@@ -181,19 +183,52 @@ serve(async (req) => {
     } else {
       channelId = channel.channelId
     }
-    // Extract the JWT token
-    // Check if user is already authenticated
-    const authHeader = req.headers.get('authorization')
-    if (!authHeader) {
-      throw new Error('No authorization header')
-    }
 
-    // Extract the JWT token
-    const token = authHeader.replace('Bearer ', '')
-    
     let userId: string
     let sessionForResponse: { access_token: string, refresh_token: string, expires_in: number } | undefined
-    if (!token) {
+
+    if (token) {
+      // Create user client with the token
+      userClient = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+          detectSessionInUrl: false
+        },
+        global: {
+          headers: {
+            authorization: `Bearer ${token}`
+          }
+        }
+      })
+
+      // Only try to get existing user profile if we have a token
+      const { data: existingUser, error: authError } = await adminClient
+        .from('UserProfiles')
+        .select('userId')
+        .eq('email', email)
+        .single()
+
+      if (authError || !existingUser) {
+        throw new Error('Failed to get user profile')
+      }
+      
+      userId = existingUser.userId
+      
+      // Set up userClient with the existing token
+      userClient = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+          detectSessionInUrl: false
+        },
+        global: {
+          headers: {
+            authorization: `Bearer ${token}`
+          }
+        }
+      })
+    } else {
       // Generate a random password for the new user
       const password = "Password123!"
 
@@ -202,16 +237,22 @@ serve(async (req) => {
         email: email,
         password: password,
         email_confirm: true // Auto-confirm the email
-      });
+      })
+
       if (signUpError) {
         // Check if error is due to existing email
         return new Response(
-            JSON.stringify({ 
-                error: 'Email already registered',
-                message: signUpError
-            }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+          JSON.stringify({ 
+            error: 'Email already registered',
+            message: signUpError
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
         )
+      }
+
+
+      if (!authUser?.user?.id) {
+        throw new Error('Failed to create auth user')
       }
 
       // Now create the user profile with the auth user's ID
@@ -221,15 +262,22 @@ serve(async (req) => {
           userId: authUser.user.id,
           accountId: account.accountId,
           name: email.split('@')[0], // Use part before @ as name
-          userType: 'end_user'
+          email: email,
+          userType: 'end_user',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          isActive: true,
+          isEmailVerified: true,
+          isSuspended: false
         })
         .select()
         .single()
-
+      console.log('New user:', newUser);
       if (createUserError || !newUser) {
-        throw new Error('Failed to create user profile: ' + createUserError?.message);
+        throw new Error('Failed to create user profile: ' + createUserError?.message)
       }
-      userId = authUser.user.id;
+
+      userId = authUser.user.id
 
       try {
         // Create a new client specifically for signing in
@@ -284,28 +332,12 @@ serve(async (req) => {
           message: signInError instanceof Error ? signInError.message : 'Unknown sign in error',
           stack: signInError instanceof Error ? signInError.stack : undefined
         })
-
+        throw new Error('Failed to sign in new user')
       }
-    } else {
-      // Create user client with the token
-      userClient = createClient(supabaseUrl, supabaseAnonKey, {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-          detectSessionInUrl: false
-        },
-        global: {
-          headers: {
-            authorization: `Bearer ${token}`
-          }
-        }
-      })
+    }
 
-      const { data: existingUser, error: authError } = await userClient
-        .from('UserProfiles')
-        .select('userId')
-        .single()
-      userId = existingUser.userId;
+    if (!userClient) {
+      throw new Error('Failed to initialize user client')
     }
 
     // Create ticket using authenticated user client
@@ -359,7 +391,7 @@ serve(async (req) => {
       error,
       message: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,
-    });
+    })
 
     // Return detailed error response
     return new Response(
