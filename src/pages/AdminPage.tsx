@@ -59,7 +59,7 @@ export function AdminPage() {
           .eq('userId', session.user.id)
           .eq('accountId', account.accountId)
           .single()
-
+        console.log("USER PROFILE", userProfile)
         if (userError) throw userError
 
         // Redirect all users to the agent workspace
