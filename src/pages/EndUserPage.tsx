@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Header } from "../components/Header"
 import { Footer } from "../components/Footer"
@@ -13,6 +13,7 @@ interface Account {
 
 export function EndUserPage() {
   const navigate = useNavigate()
+  const { accountId } = useParams<{ accountId: string }>()
   const [account, setAccount] = useState<Account | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -22,18 +23,19 @@ export function EndUserPage() {
       try {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) {
-          navigate('/')
+          navigate(`/${accountId}`)
           return
         }
 
-        // Get subdomain from hostname
-        const hostname = window.location.hostname
-        const subdomain = hostname.split('.')[0]
+        if (!accountId) {
+          setError('Invalid account')
+          return
+        }
 
         const { data: account, error: accountError } = await supabase
           .from('Accounts')
           .select('accountId, name, subdomain, endUserAccountCreationType')
-          .eq('subdomain', subdomain)
+          .eq('subdomain', accountId)
           .single()
 
         if (accountError) throw accountError
@@ -50,19 +52,19 @@ export function EndUserPage() {
         if (userError) throw userError
 
         if (userProfile.userType !== 'end_user') {
-          navigate('/')
+          navigate(`/${accountId}`)
           return
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch account')
-        navigate('/')
+        navigate(`/${accountId}`)
       } finally {
         setLoading(false)
       }
     }
 
     checkAuthAndAccount()
-  }, [navigate])
+  }, [navigate, accountId])
 
   if (loading) return <div>Loading...</div>
   if (error) return <div>Error: {error}</div>
@@ -77,6 +79,7 @@ export function EndUserPage() {
         endUserAccountCreationType={account.endUserAccountCreationType}
         onStaffLogin={() => {}}
         onUserLogin={() => {}}
+        accountId={account.subdomain}
       />
       <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="bg-white rounded-lg shadow-sm p-8">

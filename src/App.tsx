@@ -12,11 +12,13 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/tickets/new" element={<TicketCreate />} />
-        <Route path="/user" element={<EndUserPage />} />
-        <Route path="/agent/*" element={<AgentWorkspace />} />
-        <Route path="/admin" element={<AdminPage />} />
-        <Route path="/" element={<AccountHome />} />
+        <Route path="/:accountId">
+          <Route index element={<AccountHome />} />
+          <Route path="tickets/new" element={<TicketCreate />} />
+          <Route path="user" element={<EndUserPage />} />
+          <Route path="agent/*" element={<AgentWorkspace />} />
+          <Route path="admin" element={<AdminPage />} />
+        </Route>
       </Routes>
     </BrowserRouter>
   )

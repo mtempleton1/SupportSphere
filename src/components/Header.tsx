@@ -9,6 +9,7 @@ interface HeaderProps {
   showCreateTicket?: boolean;
   onCreateTicket?: () => void;
   endUserAccountCreationType: 'submit_ticket' | 'sign_up';
+  accountId: string;
 }
 
 export const Header = ({
@@ -18,6 +19,7 @@ export const Header = ({
   showCreateTicket,
   onCreateTicket,
   endUserAccountCreationType,
+  accountId,
 }: HeaderProps) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -59,7 +61,7 @@ export const Header = ({
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setShowDropdown(false);
-    window.location.href = '/';
+    window.location.href = `/${accountId}`;
   };
 
   return (
