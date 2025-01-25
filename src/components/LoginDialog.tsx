@@ -50,7 +50,7 @@ export const LoginDialog = ({
   accountType: 'submit_ticket' | 'sign_up';
 }) => {
   const navigate = useNavigate();
-  const { accountId } = useParams<{ accountId: string }>();
+  const { subdomain } = useParams<{ subdomain: string }>();
   const [mode, setMode] = useState<'login' | 'signup' | 'reset'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -60,6 +60,7 @@ export const LoginDialog = ({
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
   const [endUsers, setEndUsers] = useState<EndUser[]>([]);
   const [loadingUserId, setLoadingUserId] = useState<string | null>(null);
+  const [accountId, setAccountId] = useState<string | null>(null);
 
   // Reset mode and form when dialog closes or type changes
   useEffect(() => {
@@ -85,18 +86,19 @@ export const LoginDialog = ({
 
   const loadStaffMembers = async () => {
     try {
-      if (!accountId) {
-        throw new Error('No account ID provided');
+      if (!subdomain) {
+        throw new Error('No subdomain provided');
       }
-      
+
       // Get account
       const { data: account, error: accountError } = await supabase
         .from('Accounts')
         .select('accountId')
-        .eq('subdomain', accountId)
+        .eq('subdomain', subdomain)
         .single();
 
       if (accountError) throw accountError;
+      setAccountId(account.accountId);
 
       // Create admin client
       const adminClient = createClient(supabaseUrl, serviceKey, {
@@ -160,7 +162,7 @@ export const LoginDialog = ({
 
       if (loginError) throw loginError;
 
-      navigate(`/${accountId}/agent`);
+      navigate(`/${subdomain}/agent`);
       onClose();
     } catch (err) {
       console.error('Auto-login failed:', err);
@@ -172,18 +174,19 @@ export const LoginDialog = ({
 
   const loadEndUsers = async () => {
     try {
-      if (!accountId) {
-        throw new Error('No account ID provided');
+      if (!subdomain) {
+        throw new Error('No subdomain provided');
       }
       
       // Get account
       const { data: account, error: accountError } = await supabase
         .from('Accounts')
         .select('accountId')
-        .eq('subdomain', accountId)
+        .eq('subdomain', subdomain)
         .single();
 
       if (accountError) throw accountError;
+      setAccountId(account.accountId);
 
       // Create admin client
       const adminClient = createClient(supabaseUrl, serviceKey, {
@@ -224,7 +227,7 @@ export const LoginDialog = ({
 
       if (loginError) throw loginError;
 
-      navigate(`/${accountId}/user`);
+      navigate(`/${subdomain}/user`);
       onClose();
     } catch (err) {
       console.error('Auto-login failed:', err);
@@ -332,16 +335,28 @@ export const LoginDialog = ({
     setLoading(true);
 
     try {
+      if (!subdomain) {
+        throw new Error('No subdomain provided');
+      }
+
+      // Get account if we don't have it yet
       if (!accountId) {
-        throw new Error('No account ID provided');
+        const { data: account, error: accountError } = await supabase
+          .from('Accounts')
+          .select('accountId')
+          .eq('subdomain', subdomain)
+          .single();
+
+        if (accountError) throw accountError;
+        setAccountId(account.accountId);
       }
       
-      // Call the login edge function
+      // Call the login edge function with the actual accountId
       const { data: loginData, error: loginError } = await supabase.functions.invoke('login', {
         body: {
           email,
           password,
-          accountId,
+          accountId,  // Using the actual accountId here
           loginType: type
         }
       });
@@ -360,14 +375,14 @@ export const LoginDialog = ({
       if (type === 'staff') {
         const roleCategory = loginData.session.user.user_metadata.roleCategory;
         if (roleCategory === 'admin' || roleCategory === 'owner') {
-          navigate(`/${accountId}/admin`);
+          navigate(`/${subdomain}/admin`);
         } else if (roleCategory === 'agent') {
-          navigate(`/${accountId}/agent`);
+          navigate(`/${subdomain}/agent`);
         } else {
           throw new Error('Invalid staff role');
         }
       } else {
-        navigate(`/${accountId}/user`);
+        navigate(`/${subdomain}/user`);
       }
 
       onClose();
@@ -413,14 +428,14 @@ export const LoginDialog = ({
             userId: session.user.id,
             name: fullName,
             userType: 'end_user',
-            accountId,
+            accountId,  // Using the actual accountId here
             isEmailVerified: false,
           }
         ]);
 
       if (profileError) throw profileError;
 
-      navigate(`/${accountId}/user`);
+      navigate(`/${subdomain}/user`);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');

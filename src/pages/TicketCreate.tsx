@@ -58,7 +58,7 @@ const isValidEmail = (email: string) => {
 
 export function TicketCreate() {
   const navigate = useNavigate()
-  const { accountId } = useParams<{ accountId: string }>()
+  const { subdomain } = useParams<{ subdomain: string }>()
   const [account, setAccount] = useState<Account | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -84,15 +84,15 @@ export function TicketCreate() {
   useEffect(() => {
     async function checkAuthAndAccount() {
       try {
-        if (!accountId) {
-          setError('Invalid account')
+        if (!subdomain) {
+          setError('Invalid subdomain')
           return
         }
 
         const { data: account, error: accountError } = await supabase
           .from('Accounts')
           .select('accountId, name, subdomain, endUserAccountCreationType')
-          .eq('subdomain', accountId)
+          .eq('subdomain', subdomain)
           .single()
 
         if (accountError) throw accountError
@@ -104,7 +104,7 @@ export function TicketCreate() {
         if (account.endUserAccountCreationType === 'sign_up') {
           if (!session) {
             // Redirect if not authenticated
-            navigate(`/${accountId}`)
+            navigate(`/${subdomain}`)
             return
           }
           // Set user email if authenticated
@@ -121,7 +121,7 @@ export function TicketCreate() {
     }
 
     checkAuthAndAccount()
-  }, [navigate, accountId])
+  }, [navigate, subdomain])
 
   const validateForm = (): boolean => {
     const errors: FormErrors = {};
@@ -160,8 +160,8 @@ export function TicketCreate() {
 
     setIsSubmitting(true);
     try {
-      if (!accountId) {
-        throw new Error('No account ID provided');
+      if (!subdomain) {
+        throw new Error('No subdomain provided');
       }
 
       const response = await supabase.functions.invoke<CreateTicketResponse>('create-ticket', {
@@ -172,7 +172,7 @@ export function TicketCreate() {
           channelType: 'help_center'
         },
         headers: {
-          'x-subdomain': accountId
+          'x-subdomain': subdomain
         }
       });
 
@@ -218,7 +218,7 @@ export function TicketCreate() {
 
         // Show success message
         alert('Ticket successfully created');
-        navigate(`/${accountId}`);
+        navigate(`/${subdomain}`);
       }
       
     } catch (error) {
@@ -259,7 +259,7 @@ export function TicketCreate() {
         showCreateTicket={false}
         onCreateTicket={() => {}}
         endUserAccountCreationType={account.endUserAccountCreationType}
-        accountId={account.subdomain}
+        subdomain={account.subdomain}
       />
       <main className="flex-grow max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12 w-full">
         <div className="bg-white rounded-lg shadow-sm p-8">
