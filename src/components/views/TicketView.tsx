@@ -7,15 +7,11 @@ import {
   Maximize2,
   ChevronDown,
   ChevronUp,
-  Plus,
   X,
-  Tag,
-  Search,
   Users
 } from "lucide-react";
 import { formatDistanceToNow, format } from 'date-fns';
 import { RealtimeEvent, TabEvent, TicketPresenceState } from '../../types/realtime'
-import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 // TimeAgo component to handle relative time display
 function TimeAgo({ timestamp }: { timestamp: string }) {
@@ -62,9 +58,9 @@ interface Account {
 type RoleCategory = 'agent' | 'admin' | 'owner' | 'end_user'
 type TicketStatus = 'new' | 'open' | 'pending' | 'on_hold' | 'solved' | 'closed'
 
-interface Role {
-  roleCategory: RoleCategory
-}
+// interface Role {
+//   roleCategory: RoleCategory
+// }
 
 interface UserProfile {
   id: string
@@ -166,7 +162,7 @@ export function TicketView({
   const [userProfiles, setUserProfiles] = useState<Record<string, UserProfile>>({})
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false)
   const chatContainerRef = useRef<HTMLDivElement>(null)
-  const hasScrolledToBottomRef = useRef(false)
+  // const hasScrolledToBottomRef = useRef(false)
   const wasAtBottomRef = useRef(false)
   const lastEventRef = useRef<RealtimeEvent | null>(null)
   const [tagInput, setTagInput] = useState('');
@@ -675,7 +671,7 @@ export function TicketView({
         if (showTagSuggestions && filteredSuggestions.length > 0) {
           e.preventDefault();
           const selectedTag = filteredSuggestions[selectedSuggestionIndex];
-          handleTagSelect(selectedTag.tagId, selectedTag.name);
+          handleTagSelect(selectedTag.tagId);
         }
         break;
       case 'Enter':
@@ -691,7 +687,7 @@ export function TicketView({
   };
 
   // Handle tag selection
-  const handleTagSelect = async (tagId: string, tagName: string) => {
+  const handleTagSelect = async (tagId: string) => {
     if (isAddingTag || !ticket) return;
 
     setIsAddingTag(true);
@@ -977,7 +973,7 @@ export function TicketView({
                               ? 'bg-blue-50 text-blue-700' 
                               : 'hover:bg-gray-50'
                           }`}
-                          onClick={() => handleTagSelect(tag.tagId, tag.name)}
+                          onClick={() => handleTagSelect(tag.tagId)}
                         >
                           {tag.name}
                         </div>

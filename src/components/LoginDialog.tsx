@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { X, Circle } from "lucide-react";
+import { X, Circle, UserCircle } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { createClient } from '@supabase/supabase-js';
 import type { PresenceState } from '../types/realtime';
@@ -17,19 +17,25 @@ const serviceKey = isViteEnvironment ?
   import.meta.env.VITE_SUPABASE_SERVICE_KEY : 
   process.env.SUPABASE_SERVICE_KEY;
 
-interface UserProfile {
-  userType: 'staff' | 'end_user';
-  roleId: string;
-  Roles: {
-    roleCategory: 'end_user' | 'agent' | 'admin' | 'owner';
-  };
-}
+// interface UserProfile {
+//   userType: 'staff' | 'end_user';
+//   roleId: string;
+//   Roles: {
+//     roleCategory: 'end_user' | 'agent' | 'admin' | 'owner';
+//   };
+// }
 
 interface StaffMember {
   userId: string;
   email: string;
   name: string;
   isOnline: boolean;
+}
+
+interface EndUser {
+  userId: string;
+  email: string;
+  name: string;
 }
 
 export const LoginDialog = ({
@@ -51,6 +57,7 @@ export const LoginDialog = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
+  const [endUsers, setEndUsers] = useState<EndUser[]>([]);
   const [loadingUserId, setLoadingUserId] = useState<string | null>(null);
 
   // Reset mode and form when dialog closes or type changes
@@ -64,10 +71,14 @@ export const LoginDialog = ({
     }
   }, [isOpen, type]);
 
-  // Load staff members when dialog opens
+  // Load staff members or end users when dialog opens
   useEffect(() => {
-    if (isOpen && type === 'staff') {
-      loadStaffMembers();
+    if (isOpen) {
+      if (type === 'staff') {
+        loadStaffMembers();
+      } else if (type === 'user' && import.meta.env.DEV) {
+        loadEndUsers();
+      }
     }
   }, [isOpen, type]);
 
@@ -157,6 +168,69 @@ export const LoginDialog = ({
     }
   };
 
+  const loadEndUsers = async () => {
+    try {
+      const hostname = window.location.hostname;
+      const subdomain = hostname.split('.')[0];
+      
+      // Get account
+      const { data: account, error: accountError } = await supabase
+        .from('Accounts')
+        .select('accountId')
+        .eq('subdomain', subdomain)
+        .single();
+
+      if (accountError) throw accountError;
+
+      // Create admin client
+      const adminClient = createClient(supabaseUrl, serviceKey, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false
+        }
+      });
+
+      // Get all end users
+      const { data: userProfiles, error: profileError } = await adminClient
+        .from('UserProfiles')
+        .select('userId, email, name')
+        .eq('accountId', account.accountId)
+        .eq('userType', 'end_user');
+
+      if (profileError || !userProfiles) {
+        throw new Error('No end users found');
+      }
+
+      setEndUsers(userProfiles);
+
+    } catch (err) {
+      console.error('Failed to load end users:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load end users');
+    }
+  };
+
+  const handleEndUserLogin = async (endUser: EndUser) => {
+    setLoadingUserId(endUser.userId);
+    setError(null);
+    
+    try {
+      const { error: loginError } = await supabase.auth.signInWithPassword({
+        email: endUser.email,
+        password: 'Password123!'
+      });
+
+      if (loginError) throw loginError;
+
+      navigate('/user');
+      onClose();
+    } catch (err) {
+      console.error('Auto-login failed:', err);
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setLoadingUserId(null);
+    }
+  };
+
   if (!isOpen) return null;
 
   // Render staff selection buttons in development mode
@@ -199,6 +273,47 @@ export const LoginDialog = ({
                 <div className="text-sm text-gray-500">
                   {member.isOnline ? 'Online' : 
                    loadingUserId === member.userId ? 'Logging in...' : 'Available'}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Render end user selection buttons in development mode
+  if (import.meta.env.DEV && type === 'user') {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-semibold">Select End User</h2>
+            <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+              <X size={20} />
+            </button>
+          </div>
+          
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-md text-sm">
+              {error}
+            </div>
+          )}
+
+          <div className="space-y-2">
+            {endUsers.map(user => (
+              <button
+                key={user.userId}
+                onClick={() => handleEndUserLogin(user)}
+                disabled={loadingUserId === user.userId}
+                className="w-full flex items-center justify-between p-3 rounded-md border text-left hover:bg-gray-50"
+              >
+                <div className="flex items-center space-x-3">
+                  <UserCircle size={16} className="text-gray-400" />
+                  <span>{user.name}</span>
+                </div>
+                <div className="text-sm text-gray-500">
+                  {loadingUserId === user.userId ? 'Logging in...' : 'Click to login'}
                 </div>
               </button>
             ))}

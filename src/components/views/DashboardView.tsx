@@ -7,7 +7,7 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
-  MessageCircle,
+  // MessageCircle,
   Circle,
   X,
   Filter,
@@ -16,7 +16,7 @@ import {
 import { supabase } from "../../lib/supabase";
 import type { Database } from "../../types/supatypes";
 import { TicketPriority } from "../../types/workspace";
-import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+// import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import { TeamOverview } from './TeamOverview';
 import type { AgentPresenceState, PresenceState, RealtimeEvent } from '../../types/realtime';
 
@@ -95,7 +95,7 @@ function TimeAgo({ timestamp }: { timestamp: string }) {
 
 export function DashboardView({ onTicketSelect, realtimeEvent, presenceState }: DashboardViewProps) {
   const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [filteredTickets, setFilteredTickets] = useState<Ticket[]>([]);
+  // const [filteredTickets, setFilteredTickets] = useState<Ticket[]>([]);
   const [filters, setFilters] = useState({
     priority: '',
     assignee: '',
@@ -109,12 +109,12 @@ export function DashboardView({ onTicketSelect, realtimeEvent, presenceState }: 
     normal: [],
     low: [],
   });
-  const [ticketCounts, setTicketCounts] = useState<TicketCounts>({
-    open: 0,
-    pending: 0,
-    solved: 0,
-    new: 0,
-  });
+  // const [ticketCounts, setTicketCounts] = useState<TicketCounts>({
+  //   open: 0,
+  //   pending: 0,
+  //   solved: 0,
+  //   new: 0,
+  // });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedTickets, setSelectedTickets] = useState<Set<string>>(new Set());
@@ -260,19 +260,19 @@ export function DashboardView({ onTicketSelect, realtimeEvent, presenceState }: 
   };
 
   // Function to update ticket counts
-  const updateTicketCounts = (ticketsToCount: Ticket[]) => {
-    const counts = ticketsToCount.reduce((acc: Record<string, number>, ticket: Ticket) => {
-      acc[ticket.status as keyof TicketCounts] = (acc[ticket.status as keyof TicketCounts] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+  // const updateTicketCounts = (ticketsToCount: Ticket[]) => {
+  //   const counts = ticketsToCount.reduce((acc: Record<string, number>, ticket: Ticket) => {
+  //     acc[ticket.status as keyof TicketCounts] = (acc[ticket.status as keyof TicketCounts] || 0) + 1;
+  //     return acc;
+  //   }, {} as Record<string, number>);
 
-    return {
-      open: counts.open || 0,
-      pending: counts.pending || 0,
-      solved: counts.solved || 0,
-      new: counts.new || 0,
-    };
-  };
+  //   return {
+  //     open: counts.open || 0,
+  //     pending: counts.pending || 0,
+  //     solved: counts.solved || 0,
+  //     new: counts.new || 0,
+  //   };
+  // };
 
   // Initial data fetch
   useEffect(() => {
@@ -299,7 +299,7 @@ export function DashboardView({ onTicketSelect, realtimeEvent, presenceState }: 
 
         setTickets(transformedTickets);
         setTicketSections(organizeTicketsIntoSections(transformedTickets, session.user.id));
-        setTicketCounts(updateTicketCounts(transformedTickets));
+        // setTicketCounts(updateTicketCounts(transformedTickets));
 
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch tickets');
@@ -354,7 +354,7 @@ export function DashboardView({ onTicketSelect, realtimeEvent, presenceState }: 
 
             // Update sections and counts based on the new tickets array
             setTicketSections(organizeTicketsIntoSections(updatedTickets, session.user.id));
-            setTicketCounts(updateTicketCounts(updatedTickets));
+            // setTicketCounts(updateTicketCounts(updatedTickets));
             return updatedTickets;
           });
         }
@@ -422,7 +422,7 @@ export function DashboardView({ onTicketSelect, realtimeEvent, presenceState }: 
         );
       }
 
-      setFilteredTickets(result);
+      // setFilteredTickets(result);
       setTicketSections(organizeTicketsIntoSections(result, session?.user.id || ''));
     };
 

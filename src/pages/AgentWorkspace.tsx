@@ -7,7 +7,7 @@ import { AgentHeader } from '../components/AgentHeader';
 import { DashboardView } from '../components/views/DashboardView';
 import { TicketView } from '../components/views/TicketView';
 import { NewTabDialog } from '../components/NewTabDialog';
-import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+// import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import type { Database } from '../types/supatypes';
 import { RealtimeEvent, TabEvent, AgentPresenceState, TicketPresenceState, TicketPresenceChannelState, PresenceState } from '../types/realtime'
 
@@ -32,7 +32,7 @@ const getPriorityColor = (priority: TicketPriority | undefined): string => {
 
 export function AgentWorkspace() {
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  // const [searchParams, setSearchParams] = useSearchParams();
   const [workspace, setWorkspace] = useState<WorkspaceState>({
     tabs: [],
     activeTabId: null,
@@ -368,9 +368,9 @@ export function AgentWorkspace() {
       if (activeTab.data?.ticketId) {
         params.ticketId = activeTab.data.ticketId;
       }
-      setSearchParams(params);
+      // setSearchParams(params);
     }
-  }, [workspace.activeTabId, workspace.tabs, setSearchParams]);
+  }, [workspace.activeTabId, workspace.tabs]);
 
   const openTicketTab = (ticketId: string, subject: string, priority: TicketPriority, ticketNumber: number) => {
     // Check if tab already exists
@@ -557,15 +557,15 @@ export function AgentWorkspace() {
     }
   }, [workspace.activeTabId]);
 
-  // Cleanup presence channels when tabs are closed
-  const handleCloseTab = async (tabId: string) => {
-    const tab = workspace.tabs.find(t => t.id === tabId);
-    if (tab?.type === 'ticket' && tab.data?.ticketId) {
-      await leaveTicketPresenceChannel(tab.data.ticketId);
-    }
+  // // Cleanup presence channels when tabs are closed
+  // const handleCloseTab = async (tabId: string) => {
+  //   const tab = workspace.tabs.find(t => t.id === tabId);
+  //   if (tab?.type === 'ticket' && tab.data?.ticketId) {
+  //     await leaveTicketPresenceChannel(tab.data.ticketId);
+  //   }
     
-    // ... existing tab closing logic ...
-  };
+  //   // ... existing tab closing logic ...
+  // };
 
   // Cleanup all channels on unmount
   useEffect(() => {
