@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import {
   Ticket,
@@ -20,6 +20,7 @@ import { TicketPriority } from "../../types/workspace";
 import { TeamOverview } from './TeamOverview';
 import { SettingsPanel } from '../SettingsPanel';
 import type { AgentPresenceState, PresenceState, RealtimeEvent } from '../../types/realtime';
+import { useTabData, DashboardTicket } from '../../contexts/TabDataContext';
 
 type Ticket = Database["public"]["Tables"]["Tickets"]["Row"] & {
   requester: { name: string } | null;
@@ -95,6 +96,7 @@ function TimeAgo({ timestamp }: { timestamp: string }) {
 }
 
 export function DashboardView({ onTicketSelect, realtimeEvent, presenceState }: DashboardViewProps) {
+  const { getDashboardData, setDashboardData } = useTabData();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   // const [filteredTickets, setFilteredTickets] = useState<Ticket[]>([]);
   const [filters, setFilters] = useState({
@@ -141,6 +143,19 @@ export function DashboardView({ onTicketSelect, realtimeEvent, presenceState }: 
   const [selectedSidebarItem, setSelectedSidebarItem] = useState<SidebarItem>('notifications');
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [userRole, setUserRole] = useState<'admin' | 'agent'>('agent');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const lastEventRef = useRef<RealtimeEvent | null>(null);
+
+  // Add effect to get current user
+  useEffect(() => {
+    async function getCurrentUser() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        setCurrentUserId(session.user.id);
+      }
+    }
+    getCurrentUser();
+  }, []);
 
   // Add team fetching effect
   useEffect(() => {
@@ -280,12 +295,19 @@ export function DashboardView({ onTicketSelect, realtimeEvent, presenceState }: 
   useEffect(() => {
     async function fetchTickets() {
       try {
+        const cachedData = getDashboardData();
+        if (cachedData) {
+          setTicketSections(organizeTicketsIntoSections(cachedData, currentUserId || ''));
+          setLoading(false);
+          setTickets(cachedData);
+          return;
+        }
+
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
           return;
         }
 
-        // Call the fetch-tickets edge function
         const response = await fetch(`${import.meta.env.VITE_SUPABASE_PROJECT_URL}/functions/v1/fetch-tickets`, {
           method: 'GET',
           headers: {
@@ -293,16 +315,14 @@ export function DashboardView({ onTicketSelect, realtimeEvent, presenceState }: 
             'Content-Type': 'application/json'
           }
         });
-        const { data: transformedTickets, error } = await response.json();
-        console.log(transformedTickets)
+        const { data: tickets, error } = await response.json();
+        
         if (error) {
           throw new Error(error);
         }
-
-        setTickets(transformedTickets);
-        setTicketSections(organizeTicketsIntoSections(transformedTickets, session.user.id));
-        // setTicketCounts(updateTicketCounts(transformedTickets));
-
+        setTickets(tickets);
+        setDashboardData(tickets);
+        setTicketSections(organizeTicketsIntoSections(tickets, session.user.id));
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch tickets');
       } finally {
@@ -314,57 +334,65 @@ export function DashboardView({ onTicketSelect, realtimeEvent, presenceState }: 
   }, []);
 
   // Handle real-time events
-  useEffect(() => {
-    if (!realtimeEvent) return;
+  const handleRealtimeEvent = useCallback(async (event: RealtimeEvent) => {
+    if (!event) return;
 
-    const handleRealtimeEvent = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
 
-      if (realtimeEvent.table === 'Tickets') {
-        // Fetch the updated ticket's full details
-        const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_PROJECT_URL}/functions/v1/fetch-tickets?ticketId=${realtimeEvent.payload.new.ticketId}`,
-          {
-            headers: {
-              'Authorization': `Bearer ${session.access_token}`,
-              'Content-Type': 'application/json'
-            }
+    if (event.table === 'Tickets') {
+      // Fetch the updated ticket's full details
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_PROJECT_URL}/functions/v1/fetch-tickets?ticketId=${event.payload.new.ticketId}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json'
           }
-        );
-        
-        const { data: ticketData, error } = await response.json();
-        if (error) {
-          console.error('Error fetching ticket:', error);
-          return;
         }
+      );
+      
+      const { data: ticketData, error } = await response.json();
+      if (error) {
+        console.error('Error fetching ticket:', error);
+        return;
+      }
 
-        if (ticketData && ticketData.length > 0) {
-          const updatedTicket = ticketData[0];
-          
-          setTickets(prevTickets => {
-            let updatedTickets;
-            if (realtimeEvent.eventType === 'INSERT') {
+      if (ticketData && ticketData.length > 0) {
+        const updatedTicket = ticketData[0];
+        
+        setTickets(prevTickets => {
+          let updatedTickets;
+          if (event.eventType === 'INSERT') {
+            if (!prevTickets.some(ticket => ticket.ticketId === updatedTicket.ticketId)) {
               updatedTickets = [...prevTickets, updatedTicket];
-            } else if (realtimeEvent.eventType === 'UPDATE') {
-              updatedTickets = prevTickets.map(ticket => 
-                ticket.ticketId === updatedTicket.ticketId ? updatedTicket : ticket
-              );
             } else {
               return prevTickets;
             }
+          } else if (event.eventType === 'UPDATE') {
+            updatedTickets = prevTickets.map(ticket => 
+              ticket.ticketId === updatedTicket.ticketId ? updatedTicket : ticket
+            );
+          } else {
+            return prevTickets;
+          }
 
-            // Update sections and counts based on the new tickets array
-            setTicketSections(organizeTicketsIntoSections(updatedTickets, session.user.id));
-            // setTicketCounts(updateTicketCounts(updatedTickets));
-            return updatedTickets;
-          });
-        }
+          // Update sections based on the new tickets array
+          setTicketSections(organizeTicketsIntoSections(updatedTickets, session.user.id));
+          setDashboardData(updatedTickets);
+          return updatedTickets;
+        });
       }
-    };
+    }
+  }, []);
 
-    handleRealtimeEvent();
-  }, [realtimeEvent]);
+  // Effect to handle realtime events
+  useEffect(() => {
+    if (realtimeEvent && realtimeEvent !== lastEventRef.current) {
+      lastEventRef.current = realtimeEvent;
+      handleRealtimeEvent(realtimeEvent);
+    }
+  }, [realtimeEvent, handleRealtimeEvent]);
 
   // Get unique tags from tickets
   const getUniqueTags = (tickets: Ticket[]): string[] => {
@@ -385,8 +413,11 @@ export function DashboardView({ onTicketSelect, realtimeEvent, presenceState }: 
     setTagSuggestions(uniqueTags);
   }, [tickets]);
 
-  // Filter tickets when filters change
+  // Update sections when filters change
   useEffect(() => {
+    const tickets = getDashboardData();
+    if (!tickets) return;
+
     const applyFilters = async () => {
       let result = tickets;
       const { data: { session } } = await supabase.auth.getSession();
@@ -424,12 +455,11 @@ export function DashboardView({ onTicketSelect, realtimeEvent, presenceState }: 
         );
       }
 
-      // setFilteredTickets(result);
       setTicketSections(organizeTicketsIntoSections(result, session?.user.id || ''));
     };
 
     applyFilters();
-  }, [tickets, filters]);
+  }, [filters, getDashboardData]);
 
   // Handle filter changes
   const handleFilterChange = (filterType: keyof typeof filters, value: string) => {
