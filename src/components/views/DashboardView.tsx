@@ -18,6 +18,7 @@ import type { Database } from "../../types/supatypes";
 import { TicketPriority } from "../../types/workspace";
 // import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import { TeamOverview } from './TeamOverview';
+import { SettingsPanel } from '../SettingsPanel';
 import type { AgentPresenceState, PresenceState, RealtimeEvent } from '../../types/realtime';
 
 type Ticket = Database["public"]["Tables"]["Tickets"]["Row"] & {
@@ -139,6 +140,7 @@ export function DashboardView({ onTicketSelect, realtimeEvent, presenceState }: 
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [selectedSidebarItem, setSelectedSidebarItem] = useState<SidebarItem>('notifications');
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [userRole, setUserRole] = useState<'admin' | 'agent'>('agent');
 
   // Add team fetching effect
   useEffect(() => {
@@ -623,7 +625,34 @@ export function DashboardView({ onTicketSelect, realtimeEvent, presenceState }: 
     }
   }, [resizing, startX, startWidth]);
 
-  // Add new function to render sidebar content
+  // Add effect to fetch user role
+  useEffect(() => {
+    async function fetchUserRole() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const { data: profile } = await supabase
+          .from('UserProfiles')
+          .select('roleId')
+          .eq('userId', session.user.id)
+          .single();
+        
+        if (profile?.roleId) {
+          const { data: role } = await supabase
+            .from('Roles')
+            .select('roleCategory')
+            .eq('roleId', profile.roleId)
+            .single();
+          
+          if (role?.roleCategory === 'admin' || role?.roleCategory === 'owner') {
+            setUserRole('admin');
+          }
+        }
+      }
+    }
+    fetchUserRole();
+  }, []);
+
+  // Update renderSidebarContent
   const renderSidebarContent = () => {
     switch (selectedSidebarItem) {
       case 'notifications':
@@ -665,21 +694,16 @@ export function DashboardView({ onTicketSelect, realtimeEvent, presenceState }: 
         );
       case 'settings':
         return (
-          <>
-            <div className="p-4 border-b bg-white">
-              <h2 className="font-medium">Settings</h2>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              <div className="bg-white rounded-lg shadow-sm p-4">
-                Dashboard settings and preferences will appear here
-              </div>
-            </div>
-          </>
+          <SettingsPanel 
+            isOpen={true} 
+            onClose={() => setIsUpdatesPanelOpen(false)}
+            roleCategory={userRole}
+          />
         );
       default:
         return null;
     }
-  };
+  }
 
   if (loading) return <div>Loading...</div>;
   if (error) return <div>Error: {error}</div>;
