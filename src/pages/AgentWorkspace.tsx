@@ -154,17 +154,17 @@ export function AgentWorkspace() {
         channel
           .on('presence', { event: 'sync' }, () => {
             const state = channel.presenceState();
-            console.log('Presence state synced:', state);
+            // console.log('Presence state synced:', state);
             setGlobalPresenceState(state as PresenceState);
           })
-          .on('presence', { event: 'join' }, ({ key, newPresences }) => {
-            console.log('User joined:', key, newPresences);
-            setGlobalPresenceState(channel.presenceState() as PresenceState);
-          })
-          .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
-            console.log('User left:', key, leftPresences);
-            setGlobalPresenceState(channel.presenceState() as PresenceState);
-          })
+          // .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+          //   console.log('User joined:', key, newPresences);
+          //   setGlobalPresenceState(channel.presenceState() as PresenceState);
+          // })
+          // .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+          //   console.log('User left:', key, leftPresences);
+          //   setGlobalPresenceState(channel.presenceState() as PresenceState);
+          // })
           .subscribe(async (status) => {
             if (status === 'SUBSCRIBED') {
               // Track presence once subscribed
