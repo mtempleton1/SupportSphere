@@ -8,7 +8,9 @@ import {
   ChevronDown,
   ChevronUp,
   X,
-  Users
+  Users,
+  Search,
+  ChevronRight
 } from "lucide-react";
 import { formatDistanceToNow, format } from 'date-fns';
 import { RealtimeEvent, TabEvent, TicketPresenceState } from '../../types/realtime'
@@ -137,6 +139,9 @@ interface TicketViewProps {
   onTypingChange: (isTyping: boolean) => void;
 }
 
+type SubmitAction = 'Pending' | 'Closed' | 'Triage';
+type AfterSubmitAction = 'Close tab' | 'Stay on ticket';
+
 export function TicketView({ 
   ticketId, 
   realtimeEvent, 
@@ -161,18 +166,35 @@ export function TicketView({
   const [isInternalMessage, setIsInternalMessage] = useState(false)
   const [userProfiles, setUserProfiles] = useState<Record<string, UserProfile>>({})
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false)
+  const [userRole, setUserRole] = useState<RoleCategory>('agent')
+  const [assigneeInput, setAssigneeInput] = useState('')
+  const [teamSuggestions, setTeamSuggestions] = useState<Array<{
+    userId: string;
+    name: string;
+    email: string;
+    title?: string;
+  }>>([])
+  const [showTeamSuggestions, setShowTeamSuggestions] = useState(false)
+  const [isAssigning, setIsAssigning] = useState(false)
+  const searchTimeoutRef = useRef<number | null>(null)
   const chatContainerRef = useRef<HTMLDivElement>(null)
-  // const hasScrolledToBottomRef = useRef(false)
   const wasAtBottomRef = useRef(false)
   const lastEventRef = useRef<RealtimeEvent | null>(null)
   const [tagInput, setTagInput] = useState('');
   const [tagSuggestions, setTagSuggestions] = useState<{tagId: string, name: string}[]>([]);
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
-  const searchTimeoutRef = useRef<number | null>(null);
   const [isAddingTag, setIsAddingTag] = useState(false);
   const [isMessageInputFocused, setIsMessageInputFocused] = useState(false);
-  // const [currentSection, setCurrentSection] = useState<'details' | 'conversation' | 'requester'>('conversation');
+  const [selectedAssigneeIndex, setSelectedAssigneeIndex] = useState(0);
+  const [selectedSubmitAction, setSelectedSubmitAction] = useState<SubmitAction>('Pending');
+  const [showSubmitMenu, setShowSubmitMenu] = useState(false);
+  const [afterSubmitAction, setAfterSubmitAction] = useState<AfterSubmitAction>('Close tab');
+  const submitButtonRef = useRef<HTMLDivElement>(null);
+  const [showMacrosMenu, setShowMacrosMenu] = useState(false);
+  const [showAfterSubmitMenu, setShowAfterSubmitMenu] = useState(false);
+  const macrosButtonRef = useRef<HTMLDivElement>(null);
+  const afterSubmitButtonRef = useRef<HTMLDivElement>(null);
 
   // Mock suggested tags - in real implementation, these would come from the backend
   // const suggestedTags = [
@@ -871,319 +893,654 @@ export function TicketView({
     );
   };
 
+  // Fetch user role on mount
+  useEffect(() => {
+    async function fetchUserRole() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const { data: profile } = await supabase
+          .from('UserProfiles')
+          .select('roleId')
+          .eq('userId', session.user.id)
+          .single();
+        
+        if (profile?.roleId) {
+          const { data: role } = await supabase
+            .from('Roles')
+            .select('roleCategory')
+            .eq('roleId', profile.roleId)
+            .single();
+          
+          if (role?.roleCategory === 'admin' || role?.roleCategory === 'owner') {
+            setUserRole('admin');
+          }
+        }
+      }
+    }
+    fetchUserRole();
+  }, []);
+
+  // Handle keyboard navigation for assignee suggestions
+  const handleAssigneeKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showTeamSuggestions || teamSuggestions.length === 0) return;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setSelectedAssigneeIndex(prev => 
+          prev < teamSuggestions.length - 1 ? prev + 1 : prev
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setSelectedAssigneeIndex(prev => prev > 0 ? prev - 1 : 0);
+        break;
+      case 'Tab':
+        e.preventDefault();
+        if (teamSuggestions[selectedAssigneeIndex]) {
+          handleAssigneeSelect(teamSuggestions[selectedAssigneeIndex].userId);
+        }
+        break;
+      case 'Escape':
+        setShowTeamSuggestions(false);
+        break;
+    }
+  };
+
+  // Modify the existing searchTeamMembers function
+  const searchTeamMembers = async (searchTerm: string) => {
+    if (!searchTerm.trim() || userRole !== 'admin') {
+      setTeamSuggestions([]);
+      return;
+    }
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_PROJECT_URL}/functions/v1/fetch-team`,
+        {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        }
+      );
+
+      const { data, error } = await response.json();
+      if (error) {
+        console.error('Error searching team members:', error);
+        return;
+      }
+
+      // Filter team members based on search term
+      const filteredMembers = data.filter((member: any) => 
+        member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        member.email.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+
+      setTeamSuggestions(filteredMembers);
+      setSelectedAssigneeIndex(0); // Reset selection to first item
+    } catch (error) {
+      console.error('Error searching team members:', error);
+    }
+  };
+
+  // Modify the handleAssigneeInputChange function
+  const handleAssigneeInputChange = (value: string) => {
+    setAssigneeInput(value);
+    setShowTeamSuggestions(true);
+    setSelectedAssigneeIndex(0); // Reset selection when input changes
+
+    // Clear existing timeout
+    if (searchTimeoutRef.current) {
+      window.clearTimeout(searchTimeoutRef.current);
+    }
+
+    // Set new timeout
+    searchTimeoutRef.current = window.setTimeout(() => {
+      searchTeamMembers(value);
+    }, 500);
+  };
+
+  // Handle team member selection
+  const handleAssigneeSelect = async (userId: string) => {
+    if (isAssigning || !ticket) return;
+
+    setIsAssigning(true);
+    try {
+      const { error } = await supabase
+        .from('Tickets')
+        .update({ assigneeId: userId })
+        .eq('ticketId', ticket.ticketId);
+
+      if (error) throw error;
+
+      // Find the selected team member
+      const selectedMember = teamSuggestions.find(member => member.userId === userId);
+      if (selectedMember) {
+        setAssigneeInput(selectedMember.name);
+      }
+      setShowTeamSuggestions(false);
+    } catch (error) {
+      console.error('Error assigning ticket:', error);
+    } finally {
+      setIsAssigning(false);
+    }
+  };
+
+  // Set initial assignee input value
+  useEffect(() => {
+    if (assignee?.name) {
+      setAssigneeInput(assignee.name);
+    }
+  }, [assignee?.name]);
+
+  const handleSubmitAction = async () => {
+    if (!ticket) return;
+
+    try {
+      const status = selectedSubmitAction.toLowerCase();
+      const { error } = await supabase
+        .from('Tickets')
+        .update({ status })
+        .eq('ticketId', ticket.ticketId);
+
+      if (error) throw error;
+
+      if (afterSubmitAction === 'Close tab') {
+        // Trigger tab close through the parent
+        onTabEvent({
+          type: 'CLOSE_TAB',
+          ticketId
+        });
+      }
+    } catch (error) {
+      console.error('Error updating ticket status:', error);
+    }
+  };
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (macrosButtonRef.current && !macrosButtonRef.current.contains(event.target as Node)) {
+        setShowMacrosMenu(false);
+      }
+      if (afterSubmitButtonRef.current && !afterSubmitButtonRef.current.contains(event.target as Node)) {
+        setShowAfterSubmitMenu(false);
+      }
+      if (submitButtonRef.current && !submitButtonRef.current.contains(event.target as Node)) {
+        setShowSubmitMenu(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
   if (loading) return <div>Loading...</div>
   if (error) return <div>Error: {error}</div>
   if (!account || !ticket) return <div>Data not found</div>
 
   return (
-    <div className="flex h-full">
-      <div className="w-64 flex-shrink-0 border-r bg-white">
-        <div className="p-4 border-b">
-          <div className="flex items-center justify-between mb-4">
-            <span className="font-medium">
-              {requester?.name || 'Unknown Requester'}
-            </span>
-            {renderViewers()}
+    <div className="flex flex-col h-full">
+      <div className="flex flex-1 min-h-0">
+        <div className="w-64 flex-shrink-0 border-r bg-white">
+          <div className="p-4 border-b">
+            <div className="flex items-center justify-between mb-4">
+              <span className="font-medium">
+                {requester?.name || 'Unknown Requester'}
+              </span>
+              {renderViewers()}
+            </div>
+            <div className="flex items-center space-x-2 mb-4">
+              <span>{ticket.subject}</span>
+              <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-sm">
+                {ticket.status}
+              </span>
+              <span className="text-gray-500">Ticket #{ticket.ticketNumber}</span>
+            </div>
           </div>
-          <div className="flex items-center space-x-2 mb-4">
-            <span>{ticket.subject}</span>
-            <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-sm">
-              {ticket.status}
-            </span>
-            <span className="text-gray-500">Ticket #{ticket.ticketNumber}</span>
-          </div>
-        </div>
-        <div className="p-4">
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">
-                Brand
-              </label>
-              <select className="w-full p-2 border rounded">
-                <option>{ticket.brand?.name || 'No Brand'}</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">
-                Requester
-              </label>
-              <select className="w-full p-2 border rounded">
-                <option>{requester?.name || 'Unknown Requester'}</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">
-                Assignee
-              </label>
-              <select className="w-full p-2 border rounded">
-                <option>
-                  {ticket.group?.name && assignee?.name 
-                    ? `${ticket.group.name}/${assignee.name}`
-                    : assignee?.name || 'Unassigned'}
-                </option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">
-                Tags
-              </label>
-              <div className="relative">
-                <div className="flex flex-wrap gap-1 p-2 border rounded bg-white min-h-[38px]">
-                  {ticket.TicketTags && ticket.TicketTags.map(({ Tags }, index) => (
-                    <span
-                      key={index}
-                      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded text-xs group"
-                    >
-                      {Tags.name}
-                      <button 
-                        className="opacity-0 group-hover:opacity-100 hover:text-gray-900"
-                        onClick={() => handleRemoveTag(Tags.tagId)}
-                      >
-                        <X size={14} />
-                      </button>
-                    </span>
-                  ))}
-                  <input
-                    type="text"
-                    value={tagInput}
-                    onChange={(e) => handleTagInputChange(e.target.value)}
-                    onFocus={() => setShowTagSuggestions(true)}
-                    onKeyDown={handleTagKeyDown}
-                    onBlur={() => {
-                      // Delay hiding suggestions to allow click events to fire
-                      setTimeout(() => setShowTagSuggestions(false), 200);
-                    }}
-                    className="flex-1 min-w-[60px] outline-none"
-                    placeholder={ticket?.TicketTags?.length ? '' : 'Add tags...'}
-                    disabled={isAddingTag}
-                  />
-                </div>
-                {showTagSuggestions && tagInput && tagSuggestions.length > 0 && (
-                  <div className="absolute left-0 right-0 mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto z-50">
-                    {tagSuggestions
-                      .filter(tag => 
-                        tag.name.toLowerCase().includes(tagInput.toLowerCase()) &&
-                        !ticket?.TicketTags?.some(tt => tt.Tags.tagId === tag.tagId)
-                      )
-                      .map((tag, index) => (
+          <div className="p-4">
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">
+                  Brand
+                </label>
+                <select className="w-full p-2 border rounded">
+                  <option>{ticket.brand?.name || 'No Brand'}</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">
+                  Requester
+                </label>
+                <select className="w-full p-2 border rounded">
+                  <option>{requester?.name || 'Unknown Requester'}</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">
+                  Assignee
+                </label>
+                <div className="relative">
+                  <div className="flex items-center border rounded bg-white">
+                    <input
+                      type="text"
+                      value={assigneeInput}
+                      onChange={(e) => handleAssigneeInputChange(e.target.value)}
+                      onKeyDown={handleAssigneeKeyDown}
+                      onFocus={() => {
+                        if (userRole === 'admin') {
+                          setShowTeamSuggestions(true);
+                          searchTeamMembers(assigneeInput);
+                        }
+                      }}
+                      onBlur={() => {
+                        // Delay hiding suggestions to allow click events to fire
+                        setTimeout(() => setShowTeamSuggestions(false), 200);
+                      }}
+                      className={`w-full p-2 outline-none ${userRole !== 'admin' ? 'bg-gray-50 cursor-not-allowed' : ''}`}
+                      placeholder={userRole === 'admin' ? "Search for team member..." : ""}
+                      disabled={userRole !== 'admin'}
+                    />
+                    {userRole === 'admin' && (
+                      <div className="px-2 text-gray-400">
+                        <Search size={16} />
+                      </div>
+                    )}
+                  </div>
+                  {showTeamSuggestions && teamSuggestions.length > 0 && (
+                    <div className="absolute left-0 right-0 mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto z-50">
+                      {teamSuggestions.map((member, index) => (
                         <div
-                          key={tag.tagId}
-                          className={`px-3 py-2 cursor-pointer text-sm text-left ${
-                            index === selectedSuggestionIndex 
+                          key={member.userId}
+                          className={`px-3 py-2 cursor-pointer text-sm ${
+                            index === selectedAssigneeIndex 
                               ? 'bg-blue-50 text-blue-700' 
                               : 'hover:bg-gray-50'
                           }`}
-                          onClick={() => handleTagSelect(tag.tagId)}
+                          onClick={() => handleAssigneeSelect(member.userId)}
                         >
-                          {tag.name}
+                          <div className="font-medium">{member.name}</div>
+                          <div className="text-xs text-gray-500">{member.email}</div>
+                          {member.title && (
+                            <div className="text-xs text-gray-400">{member.title}</div>
+                          )}
                         </div>
                       ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">
+                  Tags
+                </label>
+                <div className="relative">
+                  <div className="flex flex-wrap gap-1 p-2 border rounded bg-white min-h-[38px]">
+                    {ticket.TicketTags && ticket.TicketTags.map(({ Tags }, index) => (
+                      <span
+                        key={index}
+                        className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded text-xs group"
+                      >
+                        {Tags.name}
+                        <button 
+                          className="opacity-0 group-hover:opacity-100 hover:text-gray-900"
+                          onClick={() => handleRemoveTag(Tags.tagId)}
+                        >
+                          <X size={14} />
+                        </button>
+                      </span>
+                    ))}
+                    <input
+                      type="text"
+                      value={tagInput}
+                      onChange={(e) => handleTagInputChange(e.target.value)}
+                      onFocus={() => setShowTagSuggestions(true)}
+                      onKeyDown={handleTagKeyDown}
+                      onBlur={() => {
+                        // Delay hiding suggestions to allow click events to fire
+                        setTimeout(() => setShowTagSuggestions(false), 200);
+                      }}
+                      className="flex-1 min-w-[60px] outline-none"
+                      placeholder={ticket?.TicketTags?.length ? '' : 'Add tags...'}
+                      disabled={isAddingTag}
+                    />
                   </div>
-                )}
+                  {showTagSuggestions && tagInput && tagSuggestions.length > 0 && (
+                    <div className="absolute left-0 right-0 mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto z-50">
+                      {tagSuggestions
+                        .filter(tag => 
+                          tag.name.toLowerCase().includes(tagInput.toLowerCase()) &&
+                          !ticket?.TicketTags?.some(tt => tt.Tags.tagId === tag.tagId)
+                        )
+                        .map((tag, index) => (
+                          <div
+                            key={tag.tagId}
+                            className={`px-3 py-2 cursor-pointer text-sm text-left ${
+                              index === selectedSuggestionIndex 
+                                ? 'bg-blue-50 text-blue-700' 
+                                : 'hover:bg-gray-50'
+                            }`}
+                            onClick={() => handleTagSelect(tag.tagId)}
+                          >
+                            {tag.name}
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="flex-1 flex flex-col bg-white min-w-0">
+          <div className="px-6 py-4 border-b">
+            <div className="flex items-center justify-between mb-1">
+              <h1 className="text-xl font-medium text-left">
+                Conversation with {requester?.name || 'Unknown Requester'}
+              </h1>
+            </div>
+            <div className="text-sm text-red-500 text-left mb-2">
+              Via {ticket.channel?.name?.replace(/\s*Channel\s*/i, '') || ticket.channel?.type?.replace(/_/g, ' ') || 'unknown channel'}
+            </div>
+            <div 
+              className="relative text-sm text-gray-600 text-left cursor-pointer group"
+              onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
+            >
+              <div className={`${isDescriptionExpanded ? '' : 'line-clamp-2'}`}>
+                {ticket.description}
+              </div>
+              <button 
+                className="absolute right-0 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded-full transition-colors"
+                aria-label={isDescriptionExpanded ? 'Collapse description' : 'Expand description'}
+              >
+                {isDescriptionExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 flex flex-col min-h-0">
+            <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-6">
+              {comments.map((comment) => {
+                const authorProfile = userProfiles[comment.authorId]
+                const authorName = authorProfile?.name || comment.author?.name || 'Unknown User'
+                const isCurrentUser = comment.authorId === currentUserId;
+                
+                return (
+                  <div key={comment.id} className={`flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'} mb-4`}>
+                    <div className={`flex items-start gap-2 max-w-[85%] ${isCurrentUser ? 'flex-row-reverse' : ''}`}>
+                      <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 flex items-center justify-center">
+                        {authorProfile?.avatarUrl ? (
+                          <img src={authorProfile.avatarUrl} alt={authorName} className="w-8 h-8 rounded-full" />
+                        ) : (
+                          <span className="text-sm">{authorName.charAt(0).toUpperCase()}</span>
+                        )}
+                      </div>
+                      <div className={`flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'}`}>
+                        <div className="flex items-center gap-2 mb-1">
+                          {!comment.isPublic && isCurrentUser && (
+                            <div className="text-[10px] text-orange-700 bg-orange-100 rounded px-1 py-0.5 leading-none">
+                              Internal Note
+                            </div>
+                          )}
+                          <span className="text-sm font-medium">{authorName}</span>
+                          <TimeAgo timestamp={comment.createdAt} />
+                          {!comment.isPublic && !isCurrentUser && (
+                            <div className="text-[10px] text-orange-700 bg-orange-100 rounded px-1 py-0.5 leading-none ml-auto">
+                              Internal Note
+                            </div>
+                          )}
+                        </div>
+                        <div className={`rounded-lg p-3 ${
+                          !comment.isPublic 
+                            ? 'bg-orange-50/70' 
+                            : isCurrentUser 
+                              ? 'bg-blue-500 text-white' 
+                              : 'bg-blue-50'
+                        }`}>
+                          <div className={`whitespace-pre-wrap ${isCurrentUser ? 'text-right' : 'text-left'}`}>
+                            {comment.content}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            {/* New messages indicator in its own container */}
+            <div className="relative h-0">
+              {hasUnreadMessages && (
+                <div 
+                  className="absolute left-1/2 -top-4 -translate-x-1/2 bg-blue-500 text-white text-sm px-3 py-1.5 rounded-full shadow-lg cursor-pointer hover:bg-blue-600 transition-colors mx-auto w-fit z-10"
+                  onClick={scrollToBottom}
+                >
+                  New messages ↓
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="border-t p-4 bg-white">
+            <div className="border rounded-lg">
+              <div className="p-3">
+                <textarea
+                  placeholder="Write a message..."
+                  className="w-full resize-none focus:outline-none"
+                  rows={3}
+                  value={messageInput}
+                  onChange={(e) => setMessageInput(e.target.value)}
+                  onKeyDown={handleKeyPress}
+                  onFocus={() => {
+                    setIsMessageInputFocused(true);
+                    setIsCtrlPressed(false);
+                  }}
+                  onBlur={() => {
+                    setIsMessageInputFocused(false);
+                    setIsCtrlPressed(false);
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between px-3 py-2 border-t bg-gray-50">
+                <div className="flex items-center space-x-2">
+                  <button className="p-1 hover:bg-gray-100 rounded">
+                    <Paperclip size={20} />
+                  </button>
+                  <button className="p-1 hover:bg-gray-100 rounded">
+                    <Smile size={20} />
+                  </button>
+                  <button className="p-1 hover:bg-gray-100 rounded">
+                    <Link2 size={20} />
+                  </button>
+                  <label className="flex items-center space-x-1 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isInternalMessage}
+                      onChange={(e) => setIsInternalMessage(e.target.checked)}
+                      className="rounded border-gray-300"
+                    />
+                    <span>Internal message</span>
+                  </label>
+                </div>
+                <div className="flex flex-col items-end">
+                  <button 
+                    className={`px-4 py-1.5 text-white rounded hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${
+                      isCtrlPressed ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'
+                    }`}
+                    onClick={() => handleSendMessage()}
+                    disabled={!messageInput.trim() || isSending}
+                  >
+                    {isSending ? 'Sending...' : isCtrlPressed ? 'Send Internally' : 'Send'}
+                  </button>
+                  {!isCtrlPressed && !isSending && (
+                    <span className="text-[10px] text-gray-500 mt-0.5">
+                      (CTRL+Enter for private)
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="w-80 flex-shrink-0 border-l bg-white">
+          <div className="p-4">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-gray-200 rounded-full">
+                  {requester?.avatarUrl && (
+                    <img 
+                      src={requester.avatarUrl} 
+                      alt={requester?.name || 'Unknown Requester'} 
+                      className="w-full h-full rounded-full object-cover"
+                    />
+                  )}
+                </div>
+                <span className="font-medium">
+                  {requester?.name || 'Unknown Requester'}
+                </span>
+              </div>
+              <button className="p-1 hover:bg-gray-100 rounded">
+                <Maximize2 size={16} />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">
+                  Email
+                </label>
+                <div className="text-blue-600">{requester?.email}</div>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">
+                  Role
+                </label>
+                <div className="capitalize">{requester?.role?.replace(/_/g, ' ')}</div>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">
+                  Local time
+                </label>
+                <div>
+                  {new Date(ticket.createdAt).toLocaleString()}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">
+                  Language
+                </label>
+                <div>English (United States)</div>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">
+                  Notes
+                </label>
+                <textarea
+                  className="w-full p-2 border rounded"
+                  defaultValue="Valuable Customer since 2010"
+                />
               </div>
             </div>
           </div>
         </div>
       </div>
-      <div className="flex-1 flex flex-col bg-white min-w-0">
-        <div className="px-6 py-4 border-b">
-          <div className="flex items-center justify-between mb-1">
-            <h1 className="text-xl font-medium text-left">
-              Conversation with {requester?.name || 'Unknown Requester'}
-            </h1>
-          </div>
-          <div className="text-sm text-red-500 text-left mb-2">
-            Via {ticket.channel?.name?.replace(/\s*Channel\s*/i, '') || ticket.channel?.type?.replace(/_/g, ' ') || 'unknown channel'}
-          </div>
-          <div 
-            className="relative text-sm text-gray-600 text-left cursor-pointer group"
-            onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
-          >
-            <div className={`${isDescriptionExpanded ? '' : 'line-clamp-2'}`}>
-              {ticket.description}
-            </div>
-            <button 
-              className="absolute right-0 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded-full transition-colors"
-              aria-label={isDescriptionExpanded ? 'Collapse description' : 'Expand description'}
+
+      {/* New footer section */}
+      <div className="flex items-center justify-between px-4 py-1 border-t bg-gray-100">
+        <div className="flex items-center space-x-4">
+          <div ref={macrosButtonRef} className="relative">
+            <button
+              className="p-2 border rounded text-sm bg-white w-[360px] text-left flex justify-between items-center"
+              onClick={() => setShowMacrosMenu(!showMacrosMenu)}
             >
-              {isDescriptionExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              <span className="text-gray-600">Macros</span>
+              <ChevronDown size={16} className="text-gray-400" />
             </button>
-          </div>
-        </div>
-        <div className="flex-1 flex flex-col min-h-0">
-          <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-6">
-            {comments.map((comment) => {
-              const authorProfile = userProfiles[comment.authorId]
-              const authorName = authorProfile?.name || comment.author?.name || 'Unknown User'
-              const isCurrentUser = comment.authorId === currentUserId;
-              
-              return (
-                <div key={comment.id} className={`flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'} mb-4`}>
-                  <div className={`flex items-start gap-2 max-w-[85%] ${isCurrentUser ? 'flex-row-reverse' : ''}`}>
-                    <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 flex items-center justify-center">
-                      {authorProfile?.avatarUrl ? (
-                        <img src={authorProfile.avatarUrl} alt={authorName} className="w-8 h-8 rounded-full" />
-                      ) : (
-                        <span className="text-sm">{authorName.charAt(0).toUpperCase()}</span>
-                      )}
-                    </div>
-                    <div className={`flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'}`}>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-medium">{authorName}</span>
-                        <TimeAgo timestamp={comment.createdAt} />
-                      </div>
-                      <div className={`rounded-lg p-3 ${
-                        !comment.isPublic 
-                          ? 'bg-orange-50/70 relative' 
-                          : isCurrentUser 
-                            ? 'bg-blue-500 text-white' 
-                            : 'bg-blue-50'
-                      }`}>
-                        {!comment.isPublic && (
-                          <div className="text-xs text-orange-700 bg-orange-100 rounded px-1.5 py-0.5 absolute -top-2 left-2">
-                            Internal Note
-                          </div>
-                        )}
-                        <div className={`whitespace-pre-wrap ${isCurrentUser ? 'text-right' : 'text-left'}`}>
-                          {comment.content}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-          {/* New messages indicator in its own container */}
-          <div className="relative h-0">
-            {hasUnreadMessages && (
-              <div 
-                className="absolute left-1/2 -top-4 -translate-x-1/2 bg-blue-500 text-white text-sm px-3 py-1.5 rounded-full shadow-lg cursor-pointer hover:bg-blue-600 transition-colors mx-auto w-fit z-10"
-                onClick={scrollToBottom}
-              >
-                New messages ↓
+            
+            {showMacrosMenu && (
+              <div className="absolute bottom-full left-0 mb-1 bg-white border rounded-md shadow-lg overflow-hidden w-full z-50">
+                <button
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50"
+                >
+                  No macros available
+                </button>
               </div>
             )}
           </div>
         </div>
-        <div className="border-t p-4 bg-white">
-          <div className="border rounded-lg">
-            <div className="p-3">
-              <textarea
-                placeholder="Write a message..."
-                className="w-full resize-none focus:outline-none"
-                rows={3}
-                value={messageInput}
-                onChange={(e) => setMessageInput(e.target.value)}
-                onKeyDown={handleKeyPress}
-                onFocus={() => {
-                  setIsMessageInputFocused(true);
-                  setIsCtrlPressed(false);
-                }}
-                onBlur={() => {
-                  setIsMessageInputFocused(false);
-                  setIsCtrlPressed(false);
-                }}
-              />
-            </div>
-            <div className="flex items-center justify-between px-3 py-2 border-t bg-gray-50">
-              <div className="flex items-center space-x-2">
-                <button className="p-1 hover:bg-gray-100 rounded">
-                  <Paperclip size={20} />
-                </button>
-                <button className="p-1 hover:bg-gray-100 rounded">
-                  <Smile size={20} />
-                </button>
-                <button className="p-1 hover:bg-gray-100 rounded">
-                  <Link2 size={20} />
-                </button>
-                <label className="flex items-center space-x-1 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={isInternalMessage}
-                    onChange={(e) => setIsInternalMessage(e.target.checked)}
-                    className="rounded border-gray-300"
-                  />
-                  <span>Internal message</span>
-                </label>
-              </div>
-              <div className="flex flex-col items-end">
-                <button 
-                  className={`px-4 py-1.5 text-white rounded hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${
-                    isCtrlPressed ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'
-                  }`}
-                  onClick={() => handleSendMessage()}
-                  disabled={!messageInput.trim() || isSending}
-                >
-                  {isSending ? 'Sending...' : isCtrlPressed ? 'Send Internally' : 'Send'}
-                </button>
-                {!isCtrlPressed && !isSending && (
-                  <span className="text-[10px] text-gray-500 mt-0.5">
-                    (CTRL+Enter for private)
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div className="w-80 flex-shrink-0 border-l bg-white">
-        <div className="p-4">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gray-200 rounded-full">
-                {requester?.avatarUrl && (
-                  <img 
-                    src={requester.avatarUrl} 
-                    alt={requester?.name || 'Unknown Requester'} 
-                    className="w-full h-full rounded-full object-cover"
-                  />
-                )}
-              </div>
-              <span className="font-medium">
-                {requester?.name || 'Unknown Requester'}
-              </span>
-            </div>
-            <button className="p-1 hover:bg-gray-100 rounded">
-              <Maximize2 size={16} />
+        
+        <div className="flex items-center space-x-2">
+          <div ref={afterSubmitButtonRef} className="relative">
+            <button
+              className="p-2 border rounded text-sm bg-white text-left flex justify-between items-center min-w-[120px]"
+              onClick={() => setShowAfterSubmitMenu(!showAfterSubmitMenu)}
+            >
+              <span>{afterSubmitAction}</span>
+              <ChevronDown size={16} className="text-gray-400" />
             </button>
-          </div>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">
-                Email
-              </label>
-              <div className="text-blue-600">{requester?.email}</div>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">
-                Role
-              </label>
-              <div className="capitalize">{requester?.role?.replace(/_/g, ' ')}</div>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">
-                Local time
-              </label>
-              <div>
-                {new Date(ticket.createdAt).toLocaleString()}
+            
+            {showAfterSubmitMenu && (
+              <div className="absolute bottom-full right-0 mb-1 bg-white border rounded-md shadow-lg overflow-hidden z-50">
+                {(['Close tab', 'Stay on ticket'] as const).map((action) => (
+                  <button
+                    key={action}
+                    className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-50 ${
+                      afterSubmitAction === action ? 'bg-blue-50 text-blue-600' : ''
+                    }`}
+                    onClick={() => {
+                      setAfterSubmitAction(action);
+                      setShowAfterSubmitMenu(false);
+                    }}
+                  >
+                    {action}
+                  </button>
+                ))}
               </div>
+            )}
+          </div>
+          
+          <div ref={submitButtonRef} className="relative">
+            <div className="flex">
+              <button
+                className={`px-3 py-2 text-white rounded-l transition-colors ${
+                  selectedSubmitAction === 'Closed' ? 'bg-blue-500/80 hover:bg-blue-500/90' :
+                  selectedSubmitAction === 'Pending' ? 'bg-amber-400/80 hover:bg-amber-400/90' :
+                  'bg-red-400 hover:bg-red-500'
+                }`}
+                onClick={() => setShowSubmitMenu(!showSubmitMenu)}
+              >
+                <ChevronRight size={16} />
+              </button>
+              <button
+                className={`px-6 py-2 text-white rounded-r transition-colors min-w-[150px] text-left ${
+                  selectedSubmitAction === 'Closed' ? 'bg-blue-500/80 hover:bg-blue-500/90' :
+                  selectedSubmitAction === 'Pending' ? 'bg-amber-400/80 hover:bg-amber-400/90' :
+                  'bg-red-400 hover:bg-red-500'
+                }`}
+                onClick={handleSubmitAction}
+              >
+                Submit as {selectedSubmitAction}
+              </button>
             </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">
-                Language
-              </label>
-              <div>English (United States)</div>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">
-                Notes
-              </label>
-              <textarea
-                className="w-full p-2 border rounded"
-                defaultValue="Valuable Customer since 2010"
-              />
-            </div>
+            
+            {showSubmitMenu && (
+              <div className="absolute bottom-full right-0 mb-1 bg-white border rounded-md shadow-lg overflow-hidden">
+                {(['Pending', 'Closed', 'Triage'] as const).map((action) => (
+                  <button
+                    key={action}
+                    className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-50 ${
+                      selectedSubmitAction === action ? 'bg-blue-50 text-blue-600' : ''
+                    }`}
+                    onClick={() => {
+                      setSelectedSubmitAction(action);
+                      setShowSubmitMenu(false);
+                    }}
+                  >
+                    Submit as {action}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -446,6 +446,15 @@ export function AgentWorkspace() {
       if (tab) {
         setUnreadMessageTabs(prev => prev.filter(id => id !== tab.id));
       }
+    } else if (event.type === 'CLOSE_TAB') {
+      // Find and close the tab for this ticket
+      const tabToClose = workspace.tabs.find(
+        tab => tab.type === 'ticket' && tab.data?.ticketId === event.ticketId
+      );
+      
+      if (tabToClose) {
+        closeTab(tabToClose.id);
+      }
     }
   };
 

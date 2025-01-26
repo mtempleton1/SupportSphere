@@ -29,7 +29,7 @@ type PresenceState = {
 };
 
 type TabEvent = {
-  type: 'TICKET_UPDATE' | 'MESSAGES_READ';
+  type: 'TICKET_UPDATE' | 'MESSAGES_READ' | 'CLOSE_TAB';
   ticketId: string;
   changes?: {
     subject?: string;
