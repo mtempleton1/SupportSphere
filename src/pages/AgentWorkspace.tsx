@@ -7,6 +7,7 @@ import { AgentHeader } from '../components/AgentHeader';
 import { DashboardView } from '../components/views/DashboardView';
 import { TicketView } from '../components/views/TicketView';
 import { NewTabDialog } from '../components/NewTabDialog';
+import { TabDataProvider, useTabData } from '../contexts/TabDataContext';
 // import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import type { Database } from '../types/supatypes';
 import { RealtimeEvent, TabEvent, AgentPresenceState, TicketPresenceState, TicketPresenceChannelState, PresenceState } from '../types/realtime'
@@ -30,7 +31,7 @@ const getPriorityColor = (priority: TicketPriority | undefined): string => {
   }
 };
 
-export function AgentWorkspace() {
+export function AgentWorkspaceContent() {
   const navigate = useNavigate();
   const { subdomain } = useParams<{ subdomain: string }>();
   // const [error, setError] = useState<string | null>(null);
@@ -204,12 +205,12 @@ export function AgentWorkspace() {
     }
   }, [workspace.tabs.length]);
 
-  // Handle a new realtime event immediately when it occurs
+  const { updateDashboardTicket, updateTicketData, getTicketData } = useTabData();
+
+  // Modify handleRealtimeEvent to update cache
   const handleRealtimeEvent = (event: RealtimeEvent) => {
-    // Update the current event for views that need it
     setCurrentRealtimeEvent(event);
 
-    // Handle unread message indicators
     if (event.table === 'TicketComments' && event.eventType === 'INSERT') {
       const ticketId = event.payload.new.ticketId;
       const currentWorkspace = workspaceRef.current;
@@ -224,6 +225,25 @@ export function AgentWorkspace() {
           setUnreadMessageTabs(prev => [...prev, targetTab.id]);
         }
       }
+
+      // Update ticket data with new comment
+      updateTicketData(ticketId, {
+        comments: [...(getTicketData(ticketId)?.comments || []), {
+          id: event.payload.new.commentId,
+          content: event.payload.new.content,
+          isPublic: event.payload.new.isPublic,
+          createdAt: event.payload.new.createdAt,
+          author: event.payload.new.author
+        }]
+      });
+    }
+
+    // Update cached ticket data if needed
+    if (event.table === 'Tickets' && event.eventType === 'UPDATE') {
+      const ticketId = event.payload.new.ticketId;
+      // Update both dashboard and individual ticket caches
+      updateDashboardTicket(event.payload.new);
+      updateTicketData(ticketId, event.payload.new);
     }
   };
 
@@ -720,5 +740,14 @@ export function AgentWorkspace() {
         onClose={() => setIsNewTabDialogOpen(false)}
       />
     </div>
+  );
+}
+
+// Create a new wrapper component that provides the context
+export function AgentWorkspace() {
+  return (
+    <TabDataProvider>
+      <AgentWorkspaceContent />
+    </TabDataProvider>
   );
 } 

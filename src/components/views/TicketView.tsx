@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { formatDistanceToNow, format } from 'date-fns';
 import { RealtimeEvent, TabEvent, TicketPresenceState } from '../../types/realtime'
+import { useTabData, TicketData } from '../../contexts/TabDataContext';
 
 // TimeAgo component to handle relative time display
 function TimeAgo({ timestamp }: { timestamp: string }) {
@@ -111,7 +112,7 @@ interface Ticket {
 }
 
 interface Comment {
-  id: string
+  commentId: string
   content: string
   isPublic: boolean
   createdAt: string
@@ -149,9 +150,10 @@ export function TicketView({
   isActive, 
   currentUserId,
   currentViewers,
-  // onSectionChange,
+  onSectionChange,
   onTypingChange 
 }: TicketViewProps) {
+  const { getTicketData, setTicketData } = useTabData();
   const [account, setAccount] = useState<Account | null>(null)
   const [ticket, setTicket] = useState<Ticket | null>(null)
   const [requester, setRequester] = useState<UserProfile | null>(null)
@@ -272,84 +274,34 @@ export function TicketView({
     }
   }, [isActive]);
 
-  // Function to fetch ticket data
+  // Modify fetchTicketData to use cache
   const fetchTicketData = async (session: any) => {
     try {
+      const cachedData = getTicketData(ticketId);
+      if (cachedData) {
+        return cachedData;
+      }
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_PROJECT_URL}/functions/v1/fetch-ticket?ticketId=${ticketId}`,
         {
           headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      )
-
-      const { data, error: apiError } = await response.json()
-      if (apiError) {
-        throw new Error(apiError)
-      }
-      if (!data) {
-        throw new Error('No data returned from API')
-      }
-
-      setAccount(data.account)
-      setTicket(data.ticket)
-      setComments(data.comments)
-      setAssignee(data.assignee)
-      setRequester(data.requester)
-
-      // Add requester profile to userProfiles if available
-      if (data.requester) {
-        setUserProfiles(prev => ({
-          ...prev,
-          [data.requester.userId]: {
-            id: data.requester.userId,
-            name: data.requester.name,
-            email: data.requester.email,
-            role: data.requester.userType,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json'
           }
-        }))
-      }
-
-      // Add assignee profile to userProfiles if available
-      if (data.assignee) {
-        setUserProfiles(prev => ({
-          ...prev,
-          [data.assignee.userId]: {
-            id: data.assignee.userId,
-            name: data.assignee.name,
-            email: data.assignee.email,
-            role: data.assignee.userType,
-          }
-        }))
-      }
-
-      // Fetch profiles for any comment authors not in userProfiles
-      const uniqueAuthorIds = new Set(
-        data.comments
-          .map((comment: Comment) => comment.authorId)
-          .filter((authorId: string) => 
-            authorId && 
-            authorId !== data.requester?.userId && 
-            authorId !== data.assignee?.userId
-          )
-      )
-
-      // Fetch profiles for authors we don't have yet
-      for (const authorId of uniqueAuthorIds) {
-        const profile = await getUserProfile(authorId as string, session)
-        if (profile) {
-          setUserProfiles(prev => ({
-            ...prev,
-            [authorId as string]: profile
-          }))
         }
-      }
+      );
+
+      const { data: ticketData, error } = await response.json();
+      if (error) throw new Error(error);
+
+      // Cache the fetched data
+      setTicketData(ticketId, ticketData);
+      return ticketData;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch data')
+      throw err;
     }
-  }
+  };
 
   // Function to fetch user profile
   const fetchUserProfile = async (userId: string, session: any) => {
@@ -392,22 +344,72 @@ export function TicketView({
   useEffect(() => {
     async function initializeTicketData() {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session) {
-          setError('No active session')
-          return
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+
+        const data = await fetchTicketData(session);
+        setAccount(data.account);
+        setTicket(data.ticket);
+        setComments(data.comments);
+        setAssignee(data.assignee);
+        setRequester(data.requester);
+
+        // Add requester profile to userProfiles if available
+        if (data.requester) {
+          setUserProfiles(prev => ({
+            ...prev,
+            [data.requester.userId]: {
+              id: data.requester.userId,
+              name: data.requester.name,
+              email: data.requester.email,
+              role: data.requester.userType,
+            }
+          }))
         }
 
-        await fetchTicketData(session)
+        // Add assignee profile to userProfiles if available
+        if (data.assignee) {
+          setUserProfiles(prev => ({
+            ...prev,
+            [data.assignee.userId]: {
+              id: data.assignee.userId,
+              name: data.assignee.name,
+              email: data.assignee.email,
+              role: data.assignee.userType,
+            }
+          }))
+        }
+
+        // Fetch profiles for any comment authors not in userProfiles
+        const uniqueAuthorIds = new Set(
+          data.comments
+            .map((comment: Comment) => comment.authorId)
+            .filter((authorId: string) => 
+              authorId && 
+              authorId !== data.requester?.userId && 
+              authorId !== data.assignee?.userId
+            )
+        )
+
+        // Fetch profiles for authors we don't have yet
+        for (const authorId of uniqueAuthorIds) {
+          const profile = await getUserProfile(authorId as string, session)
+          if (profile) {
+            setUserProfiles(prev => ({
+              ...prev,
+              [authorId as string]: profile
+            }))
+          }
+        }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch data')
+        setError(err instanceof Error ? err.message : 'Failed to fetch ticket data');
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
     }
 
-    initializeTicketData()
-  }, [ticketId])
+    initializeTicketData();
+  }, [ticketId]);
 
   // Handle realtime events
   const handleRealtimeEvent = useCallback(async (event: RealtimeEvent) => {
@@ -449,7 +451,7 @@ export function TicketView({
           if (authorProfile) {
             // Add the new comment to state
             const newComment: Comment = {
-              id: commentPayload.commentId,
+              commentId: commentPayload.commentId,
               content: commentPayload.content,
               isPublic: commentPayload.isPublic,
               createdAt: commentPayload.createdAt,
@@ -480,7 +482,7 @@ export function TicketView({
           // Update the existing comment
           setComments(prevComments => 
             prevComments.map(comment => 
-              comment.id === commentPayload.commentId
+              comment.commentId === commentPayload.commentId
                 ? {
                     ...comment,
                     content: commentPayload.content,
@@ -1269,7 +1271,7 @@ export function TicketView({
                 const isCurrentUser = comment.authorId === currentUserId;
                 
                 return (
-                  <div key={comment.id} className={`flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'} mb-4`}>
+                  <div key={comment.commentId} className={`flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'} mb-4`}>
                     <div className={`flex items-start gap-2 max-w-[85%] ${isCurrentUser ? 'flex-row-reverse' : ''}`}>
                       <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 flex items-center justify-center">
                         {authorProfile?.avatarUrl ? (
