@@ -67,6 +67,15 @@ const isTicketEvent = (event: RealtimeEvent): boolean =>
 const isUpdateEvent = (event: RealtimeEvent): boolean => 
   event.eventType === 'UPDATE';
 
+// Add debounce utility
+const TYPING_DEBOUNCE_MS = 1000;
+const TYPING_CHANNEL_PREFIX = 'typing';
+
+interface AgentTypingState {
+  userId: string;
+  isTyping: boolean;
+}
+
 export const ChatWidget = ({ ticket: initialTicket, defaultOpen = false, realtimeEvent }: ChatWidgetProps) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [ticket, setTicket] = useState<Ticket | null>(initialTicket || null);
@@ -80,6 +89,10 @@ export const ChatWidget = ({ ticket: initialTicket, defaultOpen = false, realtim
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const hasScrolledToBottomRef = useRef(false);
   const wasAtBottomRef = useRef(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const typingTimeoutRef = useRef<NodeJS.Timeout>();
+  const typingChannelRef = useRef<ReturnType<typeof supabase.channel>>();
+  const [agentTypingState, setAgentTypingState] = useState<AgentTypingState | null>(null);
 
   // Function to check if scrolled to bottom
   const isAtBottom = () => {
@@ -282,10 +295,74 @@ export const ChatWidget = ({ ticket: initialTicket, defaultOpen = false, realtim
     }
   };
 
+  // Setup typing channel when ticket changes
+  useEffect(() => {
+    if (!initialTicket?.ticketId) return;
+
+    const channel = supabase.channel(`${TYPING_CHANNEL_PREFIX}_${initialTicket.ticketId}`);
+    
+    channel
+      .on('broadcast', { event: 'typing' }, (payload) => {
+        // Only handle agent typing events (not our own)
+        if (payload.payload.userId !== initialTicket.requesterId) {
+          const { userId, isTyping } = payload.payload;
+          setAgentTypingState(isTyping ? { userId, isTyping } : null);
+        }
+      })
+      .subscribe((status) => {
+        if (status !== 'SUBSCRIBED') {
+          console.error('Failed to subscribe to typing channel:', status);
+        }
+      });
+
+    typingChannelRef.current = channel;
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [initialTicket?.ticketId]);
+
+  // Handle typing status changes
+  const updateTypingStatus = (typing: boolean) => {
+    if (!typingChannelRef.current || !initialTicket?.ticketId) return;
+    
+    // Only broadcast if state changed
+    if (typing !== isTyping) {
+      setIsTyping(typing);
+      
+      // Broadcast typing status
+      typingChannelRef.current.send({
+        type: 'broadcast',
+        event: 'typing',
+        payload: {
+          ticketId: initialTicket.ticketId,
+          isTyping: typing,
+          userId: initialTicket.requesterId
+        }
+      });
+    }
+
+    // Clear existing timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    // Set timeout to clear typing status
+    if (typing) {
+      typingTimeoutRef.current = setTimeout(() => {
+        updateTypingStatus(false);
+      }, TYPING_DEBOUNCE_MS);
+    }
+  };
+
+  // Modify existing handleKeyPress to include typing status
   const handleKeyPress = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
+      updateTypingStatus(false);
+    } else {
+      updateTypingStatus(true);
     }
   };
 
@@ -440,6 +517,24 @@ export const ChatWidget = ({ ticket: initialTicket, defaultOpen = false, realtim
     };
   }, [ticket?.ticketId]);
 
+  // Add typing indicator component
+  const renderTypingIndicator = () => {
+    if (!agentTypingState?.isTyping) return null;
+
+    return (
+      <div className="absolute bottom-0 left-0 mb-2 ml-4 z-10">
+        <div className="flex items-center space-x-2 p-2 text-sm text-gray-600 bg-white/80 backdrop-blur-sm rounded-lg shadow-sm">
+          <div className="flex space-x-1">
+            <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-[bounce_1s_infinite_0ms]"></div>
+            <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-[bounce_1s_infinite_200ms]"></div>
+            <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-[bounce_1s_infinite_400ms]"></div>
+          </div>
+          <span>Agent is typing...</span>
+        </div>
+      </div>
+    );
+  };
+
   if (!ticket) {
     return null;
   }
@@ -463,68 +558,71 @@ export const ChatWidget = ({ ticket: initialTicket, defaultOpen = false, realtim
 
           {/* Chat Messages */}
           <div className="flex-1 flex flex-col min-h-0">
-            <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
-              {/* Initial Ticket Description */}
-              <div className="flex space-x-3">
-                <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0" />
-                <div>
-                  <div className="bg-blue-50 rounded-lg p-3">
-                    <p className="text-left">{ticket.description}</p>
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    {new Date(ticket.createdAt).toLocaleString()}
-                  </div>
-                </div>
-              </div>
-
-              {/* Comments */}
-              {loading ? (
-                <div className="text-center py-4">Loading comments...</div>
-              ) : error ? (
-                <div className="text-center text-red-500 py-4">{error}</div>
-              ) : (
-                comments.map((comment) => {
-                  // Try to get author info from userProfiles first
-                  const authorProfile = userProfiles[comment.authorId];
-                  const authorName = authorProfile?.name || comment.author?.name || 'Unknown User';
-                  
-                  return (
-                    <div key={comment.commentId} className="flex space-x-3">
-                      <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0">
-                        {authorProfile?.avatarUrl && (
-                          <img 
-                            src={authorProfile.avatarUrl} 
-                            alt={authorName} 
-                            className="w-full h-full rounded-full object-cover"
-                          />
-                        )}
-                      </div>
-                      <div>
-                        <div className="flex items-center space-x-2 mb-1">
-                          <span className="font-medium">{authorName}</span>
-                        </div>
-                        <div className={`rounded-lg p-3 ${comment.isPublic ? 'bg-blue-50' : 'bg-gray-100'}`}>
-                          <p className="text-left">{comment.content}</p>
-                        </div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          {new Date(comment.createdAt).toLocaleString()}
-                        </div>
-                      </div>
+            <div className="flex-1 overflow-y-auto relative">
+              <div ref={chatContainerRef} className="p-4 space-y-4">
+                {/* Initial Ticket Description */}
+                <div className="flex space-x-3">
+                  <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0" />
+                  <div>
+                    <div className="bg-blue-50 rounded-lg p-3">
+                      <p className="text-left">{ticket.description}</p>
                     </div>
-                  );
-                })
-              )}
-            </div>
-            {/* New messages indicator */}
-            <div className="relative h-0">
-              {hasUnreadMessages && (
-                <div 
-                  className="absolute left-1/2 -top-4 -translate-x-1/2 bg-blue-500 text-white text-sm px-3 py-1.5 rounded-full shadow-lg cursor-pointer hover:bg-blue-600 transition-colors mx-auto w-fit z-10"
-                  onClick={scrollToBottom}
-                >
-                  New messages ↓
+                    <div className="text-xs text-gray-500 mt-1">
+                      {new Date(ticket.createdAt).toLocaleString()}
+                    </div>
+                  </div>
                 </div>
-              )}
+
+                {/* Comments */}
+                {loading ? (
+                  <div className="text-center py-4">Loading comments...</div>
+                ) : error ? (
+                  <div className="text-center text-red-500 py-4">{error}</div>
+                ) : (
+                  comments.map((comment) => {
+                    // Try to get author info from userProfiles first
+                    const authorProfile = userProfiles[comment.authorId];
+                    const authorName = authorProfile?.name || comment.author?.name || 'Unknown User';
+                    
+                    return (
+                      <div key={comment.commentId} className="flex space-x-3">
+                        <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0">
+                          {authorProfile?.avatarUrl && (
+                            <img 
+                              src={authorProfile.avatarUrl} 
+                              alt={authorName} 
+                              className="w-full h-full rounded-full object-cover"
+                            />
+                          )}
+                        </div>
+                        <div>
+                          <div className="flex items-center space-x-2 mb-1">
+                            <span className="font-medium">{authorName}</span>
+                          </div>
+                          <div className={`rounded-lg p-3 ${comment.isPublic ? 'bg-blue-50' : 'bg-gray-100'}`}>
+                            <p className="text-left">{comment.content}</p>
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            {new Date(comment.createdAt).toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              {renderTypingIndicator()}
+              {/* New messages indicator */}
+              <div className="relative h-0">
+                {hasUnreadMessages && (
+                  <div 
+                    className="absolute left-1/2 -top-4 -translate-x-1/2 bg-blue-500 text-white text-sm px-3 py-1.5 rounded-full shadow-lg cursor-pointer hover:bg-blue-600 transition-colors mx-auto w-fit z-10"
+                    onClick={scrollToBottom}
+                  >
+                    New messages ↓
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
