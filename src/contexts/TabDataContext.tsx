@@ -34,7 +34,7 @@ export type TicketData = Database["public"]["Tables"]["Tickets"]["Row"] & {
     name: string;
   };
   comments: {
-    id: string;
+    commentId: string;
     content: string;
     isPublic: boolean;
     createdAt: string;

@@ -10,11 +10,14 @@ import {
   X,
   Users,
   Search,
-  ChevronRight
+  ChevronRight,
+  ArrowRight,
+  Check
 } from "lucide-react";
 import { formatDistanceToNow, format } from 'date-fns';
 import { RealtimeEvent, TabEvent, TicketPresenceState } from '../../types/realtime'
 import { useTabData, TicketData } from '../../contexts/TabDataContext';
+import { useToast } from '../../contexts/ToastContext';
 
 // TimeAgo component to handle relative time display
 function TimeAgo({ timestamp }: { timestamp: string }) {
@@ -103,6 +106,9 @@ interface Ticket {
   }
   channel?: Channel
   description: string
+  organization?: {
+    name: string
+  }
   TicketTags?: {
     Tags: {
       tagId: string
@@ -140,8 +146,15 @@ interface TicketViewProps {
   onTypingChange: (isTyping: boolean) => void;
 }
 
-type SubmitAction = 'Pending' | 'Closed' | 'Triage';
+type SubmitAction = 'Solved' | 'Pending' | 'On Hold';
 type AfterSubmitAction = 'Close tab' | 'Stay on ticket';
+
+// Add these type guards at the top of the file, before the component
+const isTicketEvent = (event: RealtimeEvent): boolean => 
+  event.table === 'Tickets';
+
+const isUpdateEvent = (event: RealtimeEvent): boolean => 
+  event.eventType === 'UPDATE';
 
 export function TicketView({ 
   ticketId, 
@@ -150,7 +163,7 @@ export function TicketView({
   isActive, 
   currentUserId,
   currentViewers,
-  onSectionChange,
+  // onSectionChange,
   onTypingChange 
 }: TicketViewProps) {
   const { getTicketData, setTicketData } = useTabData();
@@ -197,6 +210,11 @@ export function TicketView({
   const [showAfterSubmitMenu, setShowAfterSubmitMenu] = useState(false);
   const macrosButtonRef = useRef<HTMLDivElement>(null);
   const afterSubmitButtonRef = useRef<HTMLDivElement>(null);
+  const [selectedTeamMember, setSelectedTeamMember] = useState<{userId: string, name: string} | null>(null);
+  const [showSubmitButton, setShowSubmitButton] = useState(false);
+  const [showSuccessCheck, setShowSuccessCheck] = useState(false);
+  const successTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const { showToast } = useToast();
 
   // Mock suggested tags - in real implementation, these would come from the backend
   // const suggestedTags = [
@@ -278,6 +296,7 @@ export function TicketView({
   const fetchTicketData = async (session: any) => {
     try {
       const cachedData = getTicketData(ticketId);
+
       if (cachedData) {
         return cachedData;
       }
@@ -294,8 +313,8 @@ export function TicketView({
 
       const { data: ticketData, error } = await response.json();
       if (error) throw new Error(error);
-
       // Cache the fetched data
+
       setTicketData(ticketId, ticketData);
       return ticketData;
     } catch (err) {
@@ -346,7 +365,6 @@ export function TicketView({
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return;
-
         const data = await fetchTicketData(session);
         setAccount(data.account);
         setTicket(data.ticket);
@@ -412,16 +430,20 @@ export function TicketView({
   }, [ticketId]);
 
   // Handle realtime events
-  const handleRealtimeEvent = useCallback(async (event: RealtimeEvent) => {
-    const { data: { session } } = await supabase.auth.getSession();
+  const handleRealtimeEvent = useCallback(async (event: RealtimeEvent, session?: any) => {
+    if (!session) {
+      const { data: { session: newSession } } = await supabase.auth.getSession();
+      session = newSession;
+    }
+    const c = getTicketData(ticketId);
     if (!session) return;
 
     // Store scroll position state before updates
     wasAtBottomRef.current = isAtBottom()
 
     // Handle ticket updates
-    if (event.table === 'Tickets' && 
-        event.eventType === 'UPDATE' && 
+    if (isTicketEvent(event) && 
+        isUpdateEvent(event) && 
         event.payload.new.ticketId === ticketId) {
       
       // Emit tab event if subject changed
@@ -432,10 +454,38 @@ export function TicketView({
           changes: {
             subject: event.payload.new.subject
           }
-        });
+        })
       }
-      
-      await fetchTicketData(session);
+
+      // Update ticket data in place with new values
+      setTicket(prevTicket => {
+        if (!prevTicket) return prevTicket;
+        
+        return {
+          ...prevTicket,
+          ...event.payload.new,
+          // Preserve nested objects that aren't in the payload
+          brand: prevTicket.brand,
+          requester: prevTicket.requester,
+          assignee: prevTicket.assignee,
+          group: prevTicket.group,
+          channel: prevTicket.channel,
+          TicketTags: prevTicket.TicketTags
+        };
+      });
+
+      // If assignee changed and new assignee info isn't in userProfiles, fetch it
+      if (event.payload.new.assigneeId !== event.payload.old.assigneeId && 
+          event.payload.new.assigneeId && 
+          !userProfiles[event.payload.new.assigneeId]) {
+        const profile = await getUserProfile(event.payload.new.assigneeId, session);
+        if (profile) {
+          setUserProfiles(prev => ({
+            ...prev,
+            [event.payload.new.assigneeId]: profile
+          }));
+        }
+      }
     }
     
     // Handle comment changes
@@ -447,7 +497,6 @@ export function TicketView({
         if (event.eventType === 'INSERT') {
           // Get the author profile
           const authorProfile = await getUserProfile(commentPayload.authorId, session);
-          
           if (authorProfile) {
             // Add the new comment to state
             const newComment: Comment = {
@@ -464,10 +513,14 @@ export function TicketView({
                 avatarUrl: authorProfile.avatarUrl
               }
             };
-
+            const before = getTicketData(ticketId);
+            // Update comments state
             setComments(prevComments => {
+              if (prevComments.some(comment => comment.commentId === newComment.commentId)) {
+                return prevComments;
+              }
               const newComments = [...prevComments, newComment]
-
+              
               // If we were at bottom when we last checked, scroll to bottom after render
               if (wasAtBottomRef.current) {
                 setTimeout(scrollToBottom, 15)
@@ -475,8 +528,29 @@ export function TicketView({
                 // If we weren't at bottom, show unread messages indicator
                 setHasUnreadMessages(true)
               }
-              return newComments
+              return newComments;
             });
+
+            // Update cache separately since we need to await getUserProfile
+            const cachedData = getTicketData(ticketId);
+            if (cachedData && !cachedData.comments.some(comment => comment.commentId === newComment.commentId)) {
+              const updatedComments = [...cachedData.comments, {
+                commentId: newComment.commentId,
+                content: newComment.content,
+                isPublic: newComment.isPublic,
+                createdAt: newComment.createdAt,
+                author: {
+                  userId: authorProfile.id,
+                  name: authorProfile.name,
+                  email: authorProfile.email
+                }
+              }];
+
+              setTicketData(ticketId, {
+                ...cachedData,
+                comments: updatedComments
+              });
+            }
           }
         } else if (event.eventType === 'UPDATE') {
           // Update the existing comment
@@ -553,6 +627,7 @@ export function TicketView({
     if (realtimeEvent && realtimeEvent !== lastEventRef.current) {
       lastEventRef.current = realtimeEvent;
       handleRealtimeEvent(realtimeEvent);
+      // setRealTimeEvent(null);
     }
   }, [realtimeEvent, handleRealtimeEvent]);
 
@@ -943,6 +1018,12 @@ export function TicketView({
           handleAssigneeSelect(teamSuggestions[selectedAssigneeIndex].userId);
         }
         break;
+      case 'Enter':
+        e.preventDefault();
+        if (teamSuggestions[selectedAssigneeIndex]) {
+          handleAssigneeSelect(teamSuggestions[selectedAssigneeIndex].userId);
+        }
+        break;
       case 'Escape':
         setShowTeamSuggestions(false);
         break;
@@ -993,6 +1074,8 @@ export function TicketView({
     setAssigneeInput(value);
     setShowTeamSuggestions(true);
     setSelectedAssigneeIndex(0); // Reset selection when input changes
+    setSelectedTeamMember(null); // Clear selected team member when input changes
+    setShowSubmitButton(false);
 
     // Clear existing timeout
     if (searchTimeoutRef.current) {
@@ -1006,26 +1089,73 @@ export function TicketView({
   };
 
   // Handle team member selection
-  const handleAssigneeSelect = async (userId: string) => {
+  const handleAssigneeSelect = async (userId: string, shouldSubmit: boolean = false) => {
+    if (isAssigning || !ticket) return;
+
+    // Find the selected team member
+    const selectedMember = teamSuggestions.find(member => member.userId === userId);
+    if (!selectedMember) return;
+
+    // If this is the same as current assignee, don't show submit button
+    if (ticket.assigneeId === userId) {
+      setShowSubmitButton(false);
+      setSelectedTeamMember(null);
+    } else {
+      setSelectedTeamMember(selectedMember);
+      setShowSubmitButton(true);
+    }
+
+    setAssigneeInput(selectedMember.name);
+    setShowTeamSuggestions(false);
+
+    if (shouldSubmit) {
+      await submitAssigneeChange(userId);
+    }
+  };
+
+  // Modify submitAssigneeChange
+  const submitAssigneeChange = async (userId: string) => {
     if (isAssigning || !ticket) return;
 
     setIsAssigning(true);
     try {
+      const updateData: { assigneeId: string; status?: TicketStatus } = {
+        assigneeId: userId
+      };
+
+      // If ticket is new, also update status to open
+      if (ticket.status === 'new') {
+        updateData.status = 'open';
+      }
+
       const { error } = await supabase
         .from('Tickets')
-        .update({ assigneeId: userId })
+        .update(updateData)
         .eq('ticketId', ticket.ticketId);
 
       if (error) throw error;
 
-      // Find the selected team member
-      const selectedMember = teamSuggestions.find(member => member.userId === userId);
-      if (selectedMember) {
-        setAssigneeInput(selectedMember.name);
+      // Show success check
+      setShowSubmitButton(false);
+      setShowSuccessCheck(true);
+      setSelectedTeamMember(null);
+
+      // Show toast notification
+      showToast(`Assigned ticket to ${selectedTeamMember?.name}`);
+
+      // Clear any existing timeout
+      if (successTimeoutRef.current) {
+        clearTimeout(successTimeoutRef.current);
       }
-      setShowTeamSuggestions(false);
+
+      // Set timeout to revert to search icon
+      successTimeoutRef.current = setTimeout(() => {
+        setShowSuccessCheck(false);
+      }, 3000);
+
     } catch (error) {
       console.error('Error assigning ticket:', error);
+      showToast('Failed to assign ticket', 'error');
     } finally {
       setIsAssigning(false);
     }
@@ -1042,7 +1172,7 @@ export function TicketView({
     if (!ticket) return;
 
     try {
-      const status = selectedSubmitAction.toLowerCase();
+      const status = selectedSubmitAction.toLowerCase().replace(' ', '_');
       const { error } = await supabase
         .from('Tickets')
         .update({ status })
@@ -1081,6 +1211,15 @@ export function TicketView({
     };
   }, []);
 
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimeoutRef.current) {
+        clearTimeout(successTimeoutRef.current);
+      }
+    };
+  }, []);
+
   if (loading) return <div>Loading...</div>
   if (error) return <div>Error: {error}</div>
   if (!account || !ticket) return <div>Data not found</div>
@@ -1098,16 +1237,13 @@ export function TicketView({
             </div>
             <div className="flex items-center space-x-2 mb-4">
               <span>{ticket.subject}</span>
-              <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-sm">
-                {ticket.status}
-              </span>
               <span className="text-gray-500">Ticket #{ticket.ticketNumber}</span>
             </div>
           </div>
           <div className="p-4">
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-600 mb-1">
+                <label className="block text-sm text-gray-600 mb-1 text-left">
                   Brand
                 </label>
                 <select className="w-full p-2 border rounded">
@@ -1115,7 +1251,7 @@ export function TicketView({
                 </select>
               </div>
               <div>
-                <label className="block text-sm text-gray-600 mb-1">
+                <label className="block text-sm text-gray-600 mb-1 text-left">
                   Requester
                 </label>
                 <select className="w-full p-2 border rounded">
@@ -1123,7 +1259,7 @@ export function TicketView({
                 </select>
               </div>
               <div>
-                <label className="block text-sm text-gray-600 mb-1">
+                <label className="block text-sm text-gray-600 mb-1 text-left">
                   Assignee
                 </label>
                 <div className="relative">
@@ -1141,15 +1277,35 @@ export function TicketView({
                       }}
                       onBlur={() => {
                         // Delay hiding suggestions to allow click events to fire
-                        setTimeout(() => setShowTeamSuggestions(false), 200);
+                        setTimeout(() => {
+                          setShowTeamSuggestions(false);
+                          // If no valid team member was selected, reset to current assignee
+                          if (!selectedTeamMember) {
+                            setAssigneeInput(assignee?.name || '');
+                          }
+                        }, 200);
                       }}
                       className={`w-full p-2 outline-none ${userRole !== 'admin' ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                       placeholder={userRole === 'admin' ? "Search for team member..." : ""}
                       disabled={userRole !== 'admin'}
                     />
-                    {userRole === 'admin' && (
+                    {userRole === 'admin' && !showSubmitButton && !showSuccessCheck && (
                       <div className="px-2 text-gray-400">
                         <Search size={16} />
+                      </div>
+                    )}
+                    {showSubmitButton && selectedTeamMember && (
+                      <button
+                        onClick={() => submitAssigneeChange(selectedTeamMember.userId)}
+                        disabled={isAssigning}
+                        className="px-2 text-blue-600 hover:text-blue-800 disabled:text-gray-400 transition-colors"
+                      >
+                        <ArrowRight size={16} />
+                      </button>
+                    )}
+                    {showSuccessCheck && (
+                      <div className="px-2 text-green-500 animate-[fadeInScale_0.2s_ease-out]">
+                        <Check size={16} className="animate-[checkmark_0.4s_ease-out]" />
                       </div>
                     )}
                   </div>
@@ -1177,7 +1333,7 @@ export function TicketView({
                 </div>
               </div>
               <div>
-                <label className="block text-sm text-gray-600 mb-1">
+                <label className="block text-sm text-gray-600 mb-1 text-left">
                   Tags
                 </label>
                 <div className="relative">
@@ -1241,9 +1397,14 @@ export function TicketView({
         <div className="flex-1 flex flex-col bg-white min-w-0">
           <div className="px-6 py-4 border-b">
             <div className="flex items-center justify-between mb-1">
-              <h1 className="text-xl font-medium text-left">
-                Conversation with {requester?.name || 'Unknown Requester'}
-              </h1>
+              <div className="flex items-center gap-3">
+                <h1 className="text-xl font-medium text-left">
+                  Conversation with {requester?.name || 'Unknown Requester'}
+                </h1>
+                <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-sm capitalize">
+                  {ticket.status.replace(/_/g, ' ')}
+                </span>
+              </div>
             </div>
             <div className="text-sm text-red-500 text-left mb-2">
               Via {ticket.channel?.name?.replace(/\s*Channel\s*/i, '') || ticket.channel?.type?.replace(/_/g, ' ') || 'unknown channel'}
@@ -1269,7 +1430,7 @@ export function TicketView({
                 const authorProfile = userProfiles[comment.authorId]
                 const authorName = authorProfile?.name || comment.author?.name || 'Unknown User'
                 const isCurrentUser = comment.authorId === currentUserId;
-                
+
                 return (
                   <div key={comment.commentId} className={`flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'} mb-4`}>
                     <div className={`flex items-start gap-2 max-w-[85%] ${isCurrentUser ? 'flex-row-reverse' : ''}`}>
@@ -1398,7 +1559,7 @@ export function TicketView({
                     />
                   )}
                 </div>
-                <span className="font-medium">
+                <span className="font-medium text-left">
                   {requester?.name || 'Unknown Requester'}
                 </span>
               </div>
@@ -1408,39 +1569,36 @@ export function TicketView({
             </div>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-600 mb-1">
+                <label className="block text-sm text-gray-600 mb-1 text-left">
                   Email
                 </label>
-                <div className="text-blue-600">{requester?.email}</div>
-              </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">
-                  Role
-                </label>
-                <div className="capitalize">{requester?.role?.replace(/_/g, ' ')}</div>
-              </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">
-                  Local time
-                </label>
-                <div>
-                  {new Date(ticket.createdAt).toLocaleString()}
+                <div className="p-2 border rounded text-sm text-left">
+                  {requester?.email || 'No email available'}
                 </div>
               </div>
               <div>
-                <label className="block text-sm text-gray-600 mb-1">
-                  Language
+                <label className="block text-sm text-gray-600 mb-1 text-left">
+                  Organization
                 </label>
-                <div>English (United States)</div>
+                <div className="p-2 border rounded text-sm text-left">
+                  {ticket.organization?.name || 'No organization'}
+                </div>
               </div>
               <div>
-                <label className="block text-sm text-gray-600 mb-1">
-                  Notes
+                <label className="block text-sm text-gray-600 mb-1 text-left">
+                  Language
                 </label>
-                <textarea
-                  className="w-full p-2 border rounded"
-                  defaultValue="Valuable Customer since 2010"
-                />
+                <div className="p-2 border rounded text-sm text-left">
+                  English
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1 text-left">
+                  Time zone
+                </label>
+                <div className="p-2 border rounded text-sm text-left">
+                  {Intl.DateTimeFormat().resolvedOptions().timeZone}
+                </div>
               </div>
             </div>
           </div>
@@ -1505,9 +1663,9 @@ export function TicketView({
             <div className="flex">
               <button
                 className={`px-3 py-2 text-white rounded-l transition-colors ${
-                  selectedSubmitAction === 'Closed' ? 'bg-blue-500/80 hover:bg-blue-500/90' :
+                  selectedSubmitAction === 'Solved' ? 'bg-blue-500/80 hover:bg-blue-500/90' :
                   selectedSubmitAction === 'Pending' ? 'bg-amber-400/80 hover:bg-amber-400/90' :
-                  'bg-red-400 hover:bg-red-500'
+                  'bg-orange-400 hover:bg-orange-500'
                 }`}
                 onClick={() => setShowSubmitMenu(!showSubmitMenu)}
               >
@@ -1515,9 +1673,9 @@ export function TicketView({
               </button>
               <button
                 className={`px-6 py-2 text-white rounded-r transition-colors min-w-[150px] text-left ${
-                  selectedSubmitAction === 'Closed' ? 'bg-blue-500/80 hover:bg-blue-500/90' :
+                  selectedSubmitAction === 'Solved' ? 'bg-blue-500/80 hover:bg-blue-500/90' :
                   selectedSubmitAction === 'Pending' ? 'bg-amber-400/80 hover:bg-amber-400/90' :
-                  'bg-red-400 hover:bg-red-500'
+                  'bg-orange-400 hover:bg-orange-500'
                 }`}
                 onClick={handleSubmitAction}
               >
@@ -1527,7 +1685,7 @@ export function TicketView({
             
             {showSubmitMenu && (
               <div className="absolute bottom-full right-0 mb-1 bg-white border rounded-md shadow-lg overflow-hidden">
-                {(['Pending', 'Closed', 'Triage'] as const).map((action) => (
+                {(['Solved', 'Pending', 'On Hold'] as const).map((action) => (
                   <button
                     key={action}
                     className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-50 ${

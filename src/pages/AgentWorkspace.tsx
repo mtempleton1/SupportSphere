@@ -227,15 +227,15 @@ export function AgentWorkspaceContent() {
       }
 
       // Update ticket data with new comment
-      updateTicketData(ticketId, {
-        comments: [...(getTicketData(ticketId)?.comments || []), {
-          id: event.payload.new.commentId,
-          content: event.payload.new.content,
-          isPublic: event.payload.new.isPublic,
-          createdAt: event.payload.new.createdAt,
-          author: event.payload.new.author
-        }]
-      });
+      // updateTicketData(ticketId, {
+      //   comments: [...(getTicketData(ticketId)?.comments || []), {
+      //     id: event.payload.new.commentId,
+      //     content: event.payload.new.content,
+      //     isPublic: event.payload.new.isPublic,
+      //     createdAt: event.payload.new.createdAt,
+      //     author: event.payload.new.author
+      //   }]
+      // });
     }
 
     // Update cached ticket data if needed
