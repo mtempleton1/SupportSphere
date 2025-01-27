@@ -250,8 +250,13 @@ export function TicketView({
 
   // Function to scroll to bottom
   const scrollToBottom = () => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
+    if (chatContainerRef.current && chatContainerRef.current.parentElement) {
+      console.log('chatContainerRef to bottom...');
+      console.log(chatContainerRef.current)
+
+      chatContainerRef.current.parentElement.scrollTop = chatContainerRef.current.parentElement.scrollHeight
+      console.log('chatContainerRef after......');
+      console.log(chatContainerRef.current)
       setHasUnreadMessages(false)
     }
   }
@@ -291,7 +296,9 @@ export function TicketView({
 
   // Add initial scroll effect
   useEffect(() => {
+    console.log('Initial scroll effect triggered:', { loading, commentsLength: comments.length });
     if (!loading && comments.length > 0) {
+      console.log('Scrolling to bottom...');
       scrollToBottom();
     }
   }, [loading, comments.length]);
@@ -303,12 +310,14 @@ export function TicketView({
     }
   }, [isActive]);
 
-  // Modify fetchTicketData to use cache
+  // Modify fetchTicketData to log when data is loaded
   const fetchTicketData = async (session: any) => {
     try {
+      console.log('Fetching ticket data...');
       const cachedData = getTicketData(ticketId);
 
       if (cachedData) {
+        console.log('Using cached ticket data');
         return cachedData;
       }
 
@@ -325,7 +334,7 @@ export function TicketView({
       const { data: ticketData, error } = await response.json();
       if (error) throw new Error(error);
       // Cache the fetched data
-
+      console.log('Received ticket data:', { commentsLength: ticketData.comments?.length });
       setTicketData(ticketId, ticketData);
       return ticketData;
     } catch (err) {
@@ -1105,6 +1114,10 @@ export function TicketView({
     const selectedMember = teamSuggestions.find(member => member.userId === userId);
     if (!selectedMember) return;
 
+    // Update UI state
+    setAssigneeInput(selectedMember.name);
+    setShowTeamSuggestions(false);
+
     // If this is the same as current assignee, don't show submit button
     if (ticket.assigneeId === userId) {
       setShowSubmitButton(false);
@@ -1113,9 +1126,6 @@ export function TicketView({
       setSelectedTeamMember(selectedMember);
       setShowSubmitButton(true);
     }
-
-    setAssigneeInput(selectedMember.name);
-    setShowTeamSuggestions(false);
 
     if (shouldSubmit) {
       await submitAssigneeChange(userId);
@@ -1363,15 +1373,20 @@ export function TicketView({
                           searchTeamMembers(assigneeInput);
                         }
                       }}
-                      onBlur={() => {
-                        // Delay hiding suggestions to allow click events to fire
-                        setTimeout(() => {
-                          setShowTeamSuggestions(false);
-                          // If no valid team member was selected, reset to current assignee
-                          if (!selectedTeamMember) {
-                            setAssigneeInput(assignee?.name || '');
-                          }
-                        }, 200);
+                      onBlur={(e) => {
+                        // Only hide suggestions if click was outside the suggestions list
+                        const relatedTarget = e.relatedTarget as HTMLElement;
+                        const isClickingOption = relatedTarget?.closest('.assignee-suggestion');
+                        
+                        if (!isClickingOption) {
+                          setTimeout(() => {
+                            setShowTeamSuggestions(false);
+                            // Only reset if no team member was selected
+                            if (!selectedTeamMember) {
+                              setAssigneeInput(assignee?.name || '');
+                            }
+                          }, 200);
+                        }
                       }}
                       className={`w-full p-2 outline-none ${userRole !== 'admin' ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                       placeholder={userRole === 'admin' ? "Search for team member..." : ""}
@@ -1402,12 +1417,20 @@ export function TicketView({
                       {teamSuggestions.map((member, index) => (
                         <div
                           key={member.userId}
-                          className={`px-3 py-2 cursor-pointer text-sm ${
+                          className={`assignee-suggestion px-3 py-2 cursor-pointer text-sm ${
                             index === selectedAssigneeIndex 
                               ? 'bg-blue-50 text-blue-700' 
                               : 'hover:bg-gray-50'
                           }`}
-                          onClick={() => handleAssigneeSelect(member.userId)}
+                          onClick={() => {
+                            handleAssigneeSelect(member.userId);
+                            // Keep the input focused
+                            const input = document.querySelector('input[type="text"]') as HTMLInputElement;
+                            if (input) {
+                              input.focus();
+                            }
+                          }}
+                          tabIndex={-1}
                         >
                           <div className="font-medium">{member.name}</div>
                           <div className="text-xs text-gray-500">{member.email}</div>
