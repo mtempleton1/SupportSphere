@@ -15,6 +15,10 @@
     "reset": "npx supabase db reset --linked && npx tsx scripts/seed.ts && npm run dev"
   },
   "dependencies": {
+    "@langchain/community": "^0.3.27",
+    "@langchain/core": "^0.3.36",
+    "@langchain/langgraph": "^0.2.41",
+    "@langchain/openai": "^0.4.2",
     "@supabase/supabase-js": "^2.48.0",
     "cross-fetch": "^4.1.0",
     "date-fns": "^4.1.0",
