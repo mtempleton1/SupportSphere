@@ -55,7 +55,7 @@ export function SupportSphereHome() {
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-3xl mx-auto">
-        <div className="text-center mb-12">
+        <div className="mb-12">
           <h1 className="text-4xl font-bold text-gray-900 mb-4">
             Welcome to SupportSphere
           </h1>
@@ -64,22 +64,18 @@ export function SupportSphereHome() {
           </p>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="space-y-2">
           {accounts.map((account) => (
             <button
               key={account.accountId}
               onClick={() => navigate(`/${account.subdomain}`)}
-              className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:border-blue-500 hover:shadow-md transition-all flex flex-col items-center text-center"
+              className="w-full text-left px-4 py-3 hover:bg-white rounded-lg transition-colors flex items-center"
             >
-              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mb-4">
-                <Building2 className="w-6 h-6 text-blue-600" />
+              <Building2 className="w-5 h-5 text-blue-600 mr-3" />
+              <div>
+                <div className="font-medium text-gray-900">{account.name}</div>
+                <div className="text-sm text-gray-500">{account.subdomain}</div>
               </div>
-              <h2 className="text-lg font-medium text-gray-900 mb-1">
-                {account.name}
-              </h2>
-              <p className="text-sm text-gray-500">
-                {account.subdomain}
-              </p>
             </button>
           ))}
         </div>

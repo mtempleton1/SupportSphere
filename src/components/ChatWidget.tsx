@@ -3,15 +3,15 @@ import { MessageCircle, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { RealtimeEvent } from '../types/realtime';
 
-// interface Brand {
-//   brandId: string;
-//   name: string;
-// }
+interface Brand {
+  brandId: string;
+  name: string;
+}
 
-// interface Channel {
-//   type: string;
-//   name: string;
-// }
+interface Channel {
+  type: string;
+  name: string;
+}
 
 interface Comment {
   commentId: string;
@@ -40,6 +40,18 @@ interface Ticket {
   createdAt: string;
   updatedAt: string;
   requesterId: string;
+  brand: Brand;
+  requester: UserProfile;
+  assignee?: UserProfile;
+  group?: {
+    groupId: string;
+    name: string;
+  };
+  channel?: Channel;
+  ticketNumber: number;
+  assigneeId: string | null;
+  assigneeGroupId: string | null;
+  brandId: string;
 }
 
 interface ChatWidgetProps {
@@ -48,8 +60,16 @@ interface ChatWidgetProps {
   realtimeEvent: RealtimeEvent | null;
 }
 
-export const ChatWidget = ({ ticket, defaultOpen = false, realtimeEvent }: ChatWidgetProps) => {
+// Add type guards similar to TicketView
+const isTicketEvent = (event: RealtimeEvent): boolean => 
+  event.table === 'Tickets';
+
+const isUpdateEvent = (event: RealtimeEvent): boolean => 
+  event.eventType === 'UPDATE';
+
+export const ChatWidget = ({ ticket: initialTicket, defaultOpen = false, realtimeEvent }: ChatWidgetProps) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
+  const [ticket, setTicket] = useState<Ticket | null>(initialTicket || null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -269,11 +289,38 @@ export const ChatWidget = ({ ticket, defaultOpen = false, realtimeEvent }: ChatW
     }
   };
 
+  // Update local ticket state when prop changes
+  useEffect(() => {
+    setTicket(initialTicket || null);
+  }, [initialTicket]);
+
   // Handle realtime events
   useEffect(() => {
     if (!realtimeEvent || !ticket) return;
 
-    // Only process events for this ticket
+    // Handle ticket updates
+    if (isTicketEvent(realtimeEvent) && 
+        isUpdateEvent(realtimeEvent) && 
+        realtimeEvent.payload.new.ticketId === ticket.ticketId) {
+      
+      // Update ticket data in place with new values
+      setTicket(prevTicket => {
+        if (!prevTicket) return prevTicket;
+        
+        return {
+          ...prevTicket,
+          ...realtimeEvent.payload.new,
+          // Preserve nested objects that aren't in the payload
+          brand: prevTicket.brand,
+          requester: prevTicket.requester,
+          assignee: prevTicket.assignee,
+          group: prevTicket.group,
+          channel: prevTicket.channel
+        };
+      });
+    }
+
+    // Handle comment updates (existing code)
     if (realtimeEvent.table === 'TicketComments' && 
         realtimeEvent.payload.new.ticketId === ticket.ticketId) {
       
@@ -318,15 +365,19 @@ export const ChatWidget = ({ ticket, defaultOpen = false, realtimeEvent }: ChatW
           };
 
           setComments(prevComments => {
-            const newComments = [...prevComments, newComment];
-            // If we were at bottom, scroll to bottom after render
-            if (wasAtBottomRef.current) {
-              setTimeout(scrollToBottom, 15);
+            if (!prevComments.some(comment => comment.commentId === newComment.commentId)) {
+              const newComments = [...prevComments, newComment];
+              // If we were at bottom, scroll to bottom after render
+              if (wasAtBottomRef.current) {
+                setTimeout(scrollToBottom, 15);
+              } else {
+                // If we weren't at bottom, show unread messages indicator
+                setHasUnreadMessages(true);
+              }
+              return newComments;
             } else {
-              // If we weren't at bottom, show unread messages indicator
-              setHasUnreadMessages(true);
+              return prevComments;
             }
-            return newComments;
           });
         } else if (realtimeEvent.eventType === 'UPDATE') {
           // Update the existing comment
@@ -348,6 +399,47 @@ export const ChatWidget = ({ ticket, defaultOpen = false, realtimeEvent }: ChatW
     }
   }, [realtimeEvent, ticket, userProfiles]);
 
+  // Add Supabase subscription for ticket updates
+  useEffect(() => {
+    if (!ticket?.ticketId) return;
+
+    // Subscribe to ticket changes
+    const ticketChannel = supabase
+      .channel(`ticket-${ticket.ticketId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'Tickets',
+          filter: `ticketId=eq.${ticket.ticketId}`
+        },
+        (payload) => {
+          if (payload.eventType === 'UPDATE') {
+            setTicket(prevTicket => {
+              if (!prevTicket) return prevTicket;
+              
+              return {
+                ...prevTicket,
+                ...payload.new,
+                // Preserve nested objects that aren't in the payload
+                brand: prevTicket.brand,
+                requester: prevTicket.requester,
+                assignee: prevTicket.assignee,
+                group: prevTicket.group,
+                channel: prevTicket.channel
+              };
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(ticketChannel);
+    };
+  }, [ticket?.ticketId]);
+
   if (!ticket) {
     return null;
   }
@@ -358,7 +450,12 @@ export const ChatWidget = ({ ticket, defaultOpen = false, realtimeEvent }: ChatW
         <div className="bg-white rounded-lg shadow-lg w-96 flex flex-col" style={{ height: '600px' }}>
           {/* Header */}
           <div className="p-4 border-b flex justify-between items-center">
-            <h2 className="font-medium">{ticket.subject}</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="font-medium">{ticket.subject}</h2>
+              <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-sm capitalize">
+                {ticket.status.replace(/_/g, ' ')}
+              </span>
+            </div>
             <button onClick={() => setIsOpen(false)} className="text-gray-500 hover:text-gray-700">
               <X size={20} />
             </button>
