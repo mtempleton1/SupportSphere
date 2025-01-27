@@ -33,6 +33,9 @@ interface StaffMember {
   email: string;
   name: string;
   isOnline: boolean;
+  Roles?: {
+    roleCategory: 'end_user' | 'agent' | 'admin' | 'owner';
+  };
 }
 
 interface EndUser {
@@ -134,7 +137,8 @@ export const LoginDialog = ({
         userId: profile.userId,
         email: profile.email,
         name: profile.name,
-        isOnline: onlineUserIds.has(profile.userId)
+        isOnline: onlineUserIds.has(profile.userId),
+        Roles: profile.Roles
       }));
 
       setStaffMembers(members);
@@ -293,7 +297,7 @@ export const LoginDialog = ({
                     size={8} 
                     className={`fill-current ${member.isOnline ? 'text-green-500' : 'text-yellow-500'}`} 
                   />
-                  <span>{member.name}</span>
+                  <span>{member.name} - {member.Roles?.roleCategory}</span>
                 </div>
                 <div className="text-sm text-gray-500">
                   {member.isOnline ? 'Online' : 

@@ -1392,7 +1392,7 @@ CREATE TRIGGER audit_custom_field_changes
     FOR EACH ROW EXECUTE FUNCTION audit_custom_field_changes();
 
 -- Knowledge Base Tables
-CREATE TYPE article_state AS ENUM ('draft', 'published', 'archived');
+CREATE TYPE article_state AS ENUM ('draft', 'published', 'archived', 'faq');
 CREATE TYPE content_locale AS ENUM ('en-US', 'es', 'fr', 'de', 'it', 'pt-BR', 'ja'); -- Add more as needed
 
 -- Categories Table
@@ -1407,27 +1407,36 @@ CREATE TABLE "KBCategories" (
     "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create function to check section depth
-CREATE OR REPLACE FUNCTION check_section_depth(section_id UUID, parent_id UUID)
-RETURNS BOOLEAN AS $$
-DECLARE
-    depth INTEGER;
-BEGIN
-    WITH RECURSIVE section_depth AS (
-        SELECT s."sectionId", s."parentSectionId", 1 as depth
-        FROM "KBSections" s
-        WHERE s."sectionId" = parent_id
-        UNION ALL
-        SELECT s."sectionId", s."parentSectionId", sd.depth + 1
-        FROM "KBSections" s
-        JOIN section_depth sd ON s."parentSectionId" = sd."sectionId"
-        WHERE sd.depth < 5
+-- Enable RLS for KBCategories
+ALTER TABLE "KBCategories" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for KBCategories
+CREATE POLICY "Anyone can read KB categories"
+ON "KBCategories" FOR SELECT
+TO public
+USING (true);
+
+CREATE POLICY "Account admins can modify KB categories"
+ON "KBCategories" FOR ALL
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND r."roleCategory" = 'admin'
+        AND u."accountId" = "KBCategories"."accountId"
     )
-    SELECT MAX(depth) INTO depth FROM section_depth;
-    
-    RETURN COALESCE(depth, 0) < 5;
-END;
-$$ LANGUAGE plpgsql;
+)
+WITH CHECK (
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND r."roleCategory" = 'admin'
+        AND u."accountId" = "KBCategories"."accountId"
+    )
+);
 
 -- Sections Table with modified constraint
 CREATE TABLE "KBSections" (
@@ -1444,9 +1453,37 @@ CREATE TABLE "KBSections" (
     CONSTRAINT "valid_parent_section" CHECK (
         ("parentSectionId" IS NULL) OR 
         ("parentSectionId" != "sectionId")
-    ),
-    CONSTRAINT max_section_depth CHECK (
-        check_section_depth("sectionId", "parentSectionId")
+    )
+);
+
+-- Enable RLS for KBSections
+ALTER TABLE "KBSections" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for KBSections
+CREATE POLICY "Anyone can read KB sections"
+ON "KBSections" FOR SELECT
+TO public
+USING (true);
+
+CREATE POLICY "Account admins can modify KB sections"
+ON "KBSections" FOR ALL
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND r."roleCategory" = 'admin'
+        AND u."accountId" = "KBSections"."accountId"
+    )
+)
+WITH CHECK (
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND r."roleCategory" = 'admin'
+        AND u."accountId" = "KBSections"."accountId"
     )
 );
 
@@ -1466,10 +1503,44 @@ CREATE TABLE "KBArticles" (
     "voteDownCount" INTEGER DEFAULT 0,
     "isCommentsEnabled" BOOLEAN DEFAULT TRUE,
     "isSubscriptionsEnabled" BOOLEAN DEFAULT TRUE,
+    "isFAQ" BOOLEAN DEFAULT FALSE,
+    "question" VARCHAR(500),
+    "shortAnswer" TEXT,
     "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     "publishedAt" TIMESTAMP,
     "archivedAt" TIMESTAMP
+);
+
+-- Enable RLS for KBArticles
+ALTER TABLE "KBArticles" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for KBArticles
+CREATE POLICY "Anyone can read KB articles"
+ON "KBArticles" FOR SELECT
+TO public
+USING (true);
+
+CREATE POLICY "Account admins can modify KB articles"
+ON "KBArticles" FOR ALL
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND r."roleCategory" = 'admin'
+        AND u."accountId" = "KBArticles"."accountId"
+    )
+)
+WITH CHECK (
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        WHERE u."userId" = auth.uid()
+        AND r."roleCategory" = 'admin'
+        AND u."accountId" = "KBArticles"."accountId"
+    )
 );
 
 -- Article Sections Junction Table (articles can be in multiple sections)
@@ -1479,6 +1550,39 @@ CREATE TABLE "KBArticleSections" (
     "position" INTEGER,
     "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY ("articleId", "sectionId")
+);
+
+-- Enable RLS for KBArticleSections
+ALTER TABLE "KBArticleSections" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for KBArticleSections
+CREATE POLICY "Anyone can read KB article sections"
+ON "KBArticleSections" FOR SELECT
+TO public
+USING (true);
+
+CREATE POLICY "Account admins can modify KB article sections"
+ON "KBArticleSections" FOR ALL
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        JOIN "KBArticles" a ON a."articleId" = "KBArticleSections"."articleId"
+        WHERE u."userId" = auth.uid()
+        AND r."roleCategory" = 'admin'
+        AND u."accountId" = a."accountId"
+    )
+)
+WITH CHECK (
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        JOIN "KBArticles" a ON a."articleId" = "KBArticleSections"."articleId"
+        WHERE u."userId" = auth.uid()
+        AND r."roleCategory" = 'admin'
+        AND u."accountId" = a."accountId"
+    )
 );
 
 -- Article Comments Table
@@ -1492,6 +1596,39 @@ CREATE TABLE "KBArticleComments" (
     "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Enable RLS for KBArticleComments
+ALTER TABLE "KBArticleComments" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for KBArticleComments
+CREATE POLICY "Anyone can read KB article comments"
+ON "KBArticleComments" FOR SELECT
+TO public
+USING (true);
+
+CREATE POLICY "Account admins can modify KB article comments"
+ON "KBArticleComments" FOR ALL
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        JOIN "KBArticles" a ON a."articleId" = "KBArticleComments"."articleId"
+        WHERE u."userId" = auth.uid()
+        AND r."roleCategory" = 'admin'
+        AND u."accountId" = a."accountId"
+    )
+)
+WITH CHECK (
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        JOIN "KBArticles" a ON a."articleId" = "KBArticleComments"."articleId"
+        WHERE u."userId" = auth.uid()
+        AND r."roleCategory" = 'admin'
+        AND u."accountId" = a."accountId"
+    )
+);
+
 -- Article Subscriptions Table
 CREATE TABLE "KBArticleSubscriptions" (
     "articleId" UUID REFERENCES "KBArticles"("articleId") ON DELETE CASCADE,
@@ -1500,12 +1637,78 @@ CREATE TABLE "KBArticleSubscriptions" (
     PRIMARY KEY ("articleId", "userId")
 );
 
+-- Enable RLS for KBArticleSubscriptions
+ALTER TABLE "KBArticleSubscriptions" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for KBArticleSubscriptions
+CREATE POLICY "Anyone can read KB article subscriptions"
+ON "KBArticleSubscriptions" FOR SELECT
+TO public
+USING (true);
+
+CREATE POLICY "Account admins can modify KB article subscriptions"
+ON "KBArticleSubscriptions" FOR ALL
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        JOIN "KBArticles" a ON a."articleId" = "KBArticleSubscriptions"."articleId"
+        WHERE u."userId" = auth.uid()
+        AND r."roleCategory" = 'admin'
+        AND u."accountId" = a."accountId"
+    )
+)
+WITH CHECK (
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        JOIN "KBArticles" a ON a."articleId" = "KBArticleSubscriptions"."articleId"
+        WHERE u."userId" = auth.uid()
+        AND r."roleCategory" = 'admin'
+        AND u."accountId" = a."accountId"
+    )
+);
+
 -- Article Tags Table
 CREATE TABLE "KBArticleTags" (
     "articleId" UUID REFERENCES "KBArticles"("articleId") ON DELETE CASCADE,
     "tag" VARCHAR(100) NOT NULL,
     "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY ("articleId", "tag")
+);
+
+-- Enable RLS for KBArticleTags
+ALTER TABLE "KBArticleTags" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for KBArticleTags
+CREATE POLICY "Anyone can read KB article tags"
+ON "KBArticleTags" FOR SELECT
+TO public
+USING (true);
+
+CREATE POLICY "Account admins can modify KB article tags"
+ON "KBArticleTags" FOR ALL
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        JOIN "KBArticles" a ON a."articleId" = "KBArticleTags"."articleId"
+        WHERE u."userId" = auth.uid()
+        AND r."roleCategory" = 'admin'
+        AND u."accountId" = a."accountId"
+    )
+)
+WITH CHECK (
+    EXISTS (
+        SELECT 1 FROM "UserProfiles" u
+        JOIN "Roles" r ON u."roleId" = r."roleId"
+        JOIN "KBArticles" a ON a."articleId" = "KBArticleTags"."articleId"
+        WHERE u."userId" = auth.uid()
+        AND r."roleCategory" = 'admin'
+        AND u."accountId" = a."accountId"
+    )
 );
 
 -- Article Attachments Table
