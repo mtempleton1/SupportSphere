@@ -156,6 +156,14 @@ const isTicketEvent = (event: RealtimeEvent): boolean =>
 const isUpdateEvent = (event: RealtimeEvent): boolean => 
   event.eventType === 'UPDATE';
 
+// Add typing channel constant to match ChatWidget
+const TYPING_CHANNEL_PREFIX = 'typing';
+
+interface TypingIndicator {
+  userId: string;
+  isTyping: boolean;
+}
+
 export function TicketView({ 
   ticketId, 
   realtimeEvent, 
@@ -215,6 +223,9 @@ export function TicketView({
   const [showSuccessCheck, setShowSuccessCheck] = useState(false);
   const successTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { showToast } = useToast();
+  const [typingIndicator, setTypingIndicator] = useState<TypingIndicator | null>(null);
+  const agentTypingTimeoutRef = useRef<NodeJS.Timeout>();
+  const typingChannelRef = useRef<ReturnType<typeof supabase.channel>>();
 
   // Mock suggested tags - in real implementation, these would come from the backend
   // const suggestedTags = [
@@ -1218,6 +1229,85 @@ export function TicketView({
     };
   }, []);
 
+  // Setup typing channel
+  useEffect(() => {
+    if (!ticketId) return;
+    
+    const channel = supabase.channel(`${TYPING_CHANNEL_PREFIX}_${ticketId}`);
+    
+    channel
+      .on('broadcast', { event: 'typing' }, (payload) => {
+        const { userId, isTyping } = payload.payload;
+        setTypingIndicator(isTyping ? { userId, isTyping } : null);
+      })
+      .subscribe((status) => {
+        if (status !== 'SUBSCRIBED') {
+          console.error('Failed to subscribe to typing channel:', status);
+        }
+      });
+
+    typingChannelRef.current = channel;
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [ticketId]);
+
+  // Handle agent typing status
+  const updateAgentTypingStatus = (isTyping: boolean) => {
+    if (!typingChannelRef.current || !currentUserId) return;
+
+    // Clear existing timeout
+    if (agentTypingTimeoutRef.current) {
+      clearTimeout(agentTypingTimeoutRef.current);
+    }
+
+    // Send typing status
+    typingChannelRef.current.send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: {
+        ticketId,
+        isTyping,
+        userId: currentUserId
+      }
+    });
+
+    // Set timeout to clear typing status
+    if (isTyping) {
+      agentTypingTimeoutRef.current = setTimeout(() => {
+        updateAgentTypingStatus(false);
+      }, 1000);
+    }
+  };
+
+  // Modify the textarea onChange and onKeyDown handlers
+  const handleMessageInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setMessageInput(e.target.value);
+    updateAgentTypingStatus(true);
+  };
+
+  // Modify the typing indicator component styling
+  const renderTypingIndicator = () => {
+    if (!typingIndicator?.isTyping) return null;
+
+    const typingUser = userProfiles[typingIndicator.userId];
+    if (!typingUser) return null;
+
+    return (
+      <div className="absolute bottom-0 left-0 mb-2 ml-4 z-10">
+        <div className="flex items-center space-x-2 p-2 text-sm text-gray-600 bg-white/80 backdrop-blur-sm rounded-lg shadow-sm">
+          <div className="flex space-x-1">
+            <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-[bounce_1s_infinite_0ms]"></div>
+            <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-[bounce_1s_infinite_200ms]"></div>
+            <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-[bounce_1s_infinite_400ms]"></div>
+          </div>
+          <span>{typingUser.name} is typing...</span>
+        </div>
+      </div>
+    );
+  };
+
   if (loading) return <div>Loading...</div>
   if (error) return <div>Error: {error}</div>
   if (!account || !ticket) return <div>Data not found</div>
@@ -1423,53 +1513,56 @@ export function TicketView({
             </div>
           </div>
           <div className="flex-1 flex flex-col min-h-0">
-            <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-6">
-              {comments.map((comment) => {
-                const authorProfile = userProfiles[comment.authorId]
-                const authorName = authorProfile?.name || comment.author?.name || 'Unknown User'
-                const isCurrentUser = comment.authorId === currentUserId;
+            <div className="flex-1 overflow-y-auto relative">
+              <div className="p-4" ref={chatContainerRef}>
+                {comments.map((comment) => {
+                  const authorProfile = userProfiles[comment.authorId]
+                  const authorName = authorProfile?.name || comment.author?.name || 'Unknown User'
+                  const isCurrentUser = comment.authorId === currentUserId;
 
-                return (
-                  <div key={comment.commentId} className={`flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'} mb-4`}>
-                    <div className={`flex items-start gap-2 max-w-[85%] ${isCurrentUser ? 'flex-row-reverse' : ''}`}>
-                      <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 flex items-center justify-center">
-                        {authorProfile?.avatarUrl ? (
-                          <img src={authorProfile.avatarUrl} alt={authorName} className="w-8 h-8 rounded-full" />
-                        ) : (
-                          <span className="text-sm">{authorName.charAt(0).toUpperCase()}</span>
-                        )}
-                      </div>
-                      <div className={`flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'}`}>
-                        <div className="flex items-center gap-2 mb-1">
-                          {!comment.isPublic && isCurrentUser && (
-                            <div className="text-[10px] text-orange-700 bg-orange-100 rounded px-1 py-0.5 leading-none">
-                              Internal Note
-                            </div>
-                          )}
-                          <span className="text-sm font-medium">{authorName}</span>
-                          <TimeAgo timestamp={comment.createdAt} />
-                          {!comment.isPublic && !isCurrentUser && (
-                            <div className="text-[10px] text-orange-700 bg-orange-100 rounded px-1 py-0.5 leading-none ml-auto">
-                              Internal Note
-                            </div>
+                  return (
+                    <div key={comment.commentId} className={`flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'} mb-4`}>
+                      <div className={`flex items-start gap-2 max-w-[85%] ${isCurrentUser ? 'flex-row-reverse' : ''}`}>
+                        <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 flex items-center justify-center">
+                          {authorProfile?.avatarUrl ? (
+                            <img src={authorProfile.avatarUrl} alt={authorName} className="w-8 h-8 rounded-full" />
+                          ) : (
+                            <span className="text-sm">{authorName.charAt(0).toUpperCase()}</span>
                           )}
                         </div>
-                        <div className={`rounded-lg p-3 ${
-                          !comment.isPublic 
-                            ? 'bg-orange-50/70' 
-                            : isCurrentUser 
-                              ? 'bg-blue-500 text-white' 
-                              : 'bg-blue-50'
-                        }`}>
-                          <div className={`whitespace-pre-wrap ${isCurrentUser ? 'text-right' : 'text-left'}`}>
-                            {comment.content}
+                        <div className={`flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'}`}>
+                          <div className="flex items-center gap-2 mb-1">
+                            {!comment.isPublic && isCurrentUser && (
+                              <div className="text-[10px] text-orange-700 bg-orange-100 rounded px-1 py-0.5 leading-none">
+                                Internal Note
+                              </div>
+                            )}
+                            <span className="text-sm font-medium">{authorName}</span>
+                            <TimeAgo timestamp={comment.createdAt} />
+                            {!comment.isPublic && !isCurrentUser && (
+                              <div className="text-[10px] text-orange-700 bg-orange-100 rounded px-1 py-0.5 leading-none ml-auto">
+                                Internal Note
+                              </div>
+                            )}
+                          </div>
+                          <div className={`rounded-lg p-3 ${
+                            !comment.isPublic 
+                              ? 'bg-orange-50/70' 
+                              : isCurrentUser 
+                                ? 'bg-blue-500 text-white' 
+                                : 'bg-blue-50'
+                          }`}>
+                            <div className={`whitespace-pre-wrap ${isCurrentUser ? 'text-right' : 'text-left'}`}>
+                              {comment.content}
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                )
-              })}
+                  )
+                })}
+              </div>
+              {renderTypingIndicator()}
             </div>
             {/* New messages indicator in its own container */}
             <div className="relative h-0">
@@ -1491,8 +1584,13 @@ export function TicketView({
                   className="w-full resize-none focus:outline-none"
                   rows={3}
                   value={messageInput}
-                  onChange={(e) => setMessageInput(e.target.value)}
-                  onKeyDown={handleKeyPress}
+                  onChange={handleMessageInputChange}
+                  onKeyDown={(e) => {
+                    handleKeyPress(e);
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      updateAgentTypingStatus(false);
+                    }
+                  }}
                   onFocus={() => {
                     setIsMessageInputFocused(true);
                     setIsCtrlPressed(false);
@@ -1500,6 +1598,7 @@ export function TicketView({
                   onBlur={() => {
                     setIsMessageInputFocused(false);
                     setIsCtrlPressed(false);
+                    updateAgentTypingStatus(false);
                   }}
                 />
               </div>
