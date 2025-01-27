@@ -205,7 +205,7 @@ export function AgentWorkspaceContent() {
     }
   }, [workspace.tabs.length]);
 
-  const { updateDashboardTicket, updateTicketData, getTicketData } = useTabData();
+  const { updateDashboardTicket, updateTicketData } = useTabData();
 
   // Modify handleRealtimeEvent to update cache
   const handleRealtimeEvent = (event: RealtimeEvent) => {

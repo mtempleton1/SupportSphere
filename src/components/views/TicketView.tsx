@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { formatDistanceToNow, format } from 'date-fns';
 import { RealtimeEvent, TabEvent, TicketPresenceState } from '../../types/realtime'
-import { useTabData, TicketData } from '../../contexts/TabDataContext';
+import { useTabData } from '../../contexts/TabDataContext';
 import { useToast } from '../../contexts/ToastContext';
 
 // TimeAgo component to handle relative time display
@@ -435,7 +435,6 @@ export function TicketView({
       const { data: { session: newSession } } = await supabase.auth.getSession();
       session = newSession;
     }
-    const c = getTicketData(ticketId);
     if (!session) return;
 
     // Store scroll position state before updates
@@ -513,7 +512,6 @@ export function TicketView({
                 avatarUrl: authorProfile.avatarUrl
               }
             };
-            const before = getTicketData(ticketId);
             // Update comments state
             setComments(prevComments => {
               if (prevComments.some(comment => comment.commentId === newComment.commentId)) {
