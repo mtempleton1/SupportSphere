@@ -20,7 +20,7 @@ import { TicketPriority } from "../../types/workspace";
 import { TeamOverview } from './TeamOverview';
 import { SettingsPanel } from '../SettingsPanel';
 import type { AgentPresenceState, PresenceState, RealtimeEvent } from '../../types/realtime';
-import { useTabData, DashboardTicket } from '../../contexts/TabDataContext';
+import { useTabData } from '../../contexts/TabDataContext';
 
 type Ticket = Database["public"]["Tables"]["Tickets"]["Row"] & {
   requester: { name: string } | null;

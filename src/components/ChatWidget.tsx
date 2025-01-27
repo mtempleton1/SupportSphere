@@ -3,15 +3,15 @@ import { MessageCircle, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { RealtimeEvent } from '../types/realtime';
 
-interface Brand {
-  brandId: string;
-  name: string;
-}
+// interface Brand {
+//   brandId: string;
+//   name: string;
+// }
 
-interface Channel {
-  type: string;
-  name: string;
-}
+// interface Channel {
+//   type: string;
+//   name: string;
+// }
 
 interface Comment {
   commentId: string;
@@ -40,18 +40,18 @@ interface Ticket {
   createdAt: string;
   updatedAt: string;
   requesterId: string;
-  brand: Brand;
-  requester: UserProfile;
-  assignee?: UserProfile;
-  group?: {
-    groupId: string;
-    name: string;
-  };
-  channel?: Channel;
-  ticketNumber: number;
-  assigneeId: string | null;
-  assigneeGroupId: string | null;
-  brandId: string;
+  // brand: Brand;
+  // requester: UserProfile;
+  // assignee?: UserProfile;
+  // group?: {
+  //   groupId: string;
+  //   name: string;
+  // };
+  // channel?: Channel;
+  // ticketNumber: number;
+  // assigneeId: string | null;
+  // assigneeGroupId: string | null;
+  // brandId: string;
 }
 
 interface ChatWidgetProps {
@@ -311,11 +311,11 @@ export const ChatWidget = ({ ticket: initialTicket, defaultOpen = false, realtim
           ...prevTicket,
           ...realtimeEvent.payload.new,
           // Preserve nested objects that aren't in the payload
-          brand: prevTicket.brand,
-          requester: prevTicket.requester,
-          assignee: prevTicket.assignee,
-          group: prevTicket.group,
-          channel: prevTicket.channel
+          // brand: prevTicket.brand,
+          // requester: prevTicket.requester,
+          // assignee: prevTicket.assignee,
+          // group: prevTicket.group,
+          // channel: prevTicket.channel
         };
       });
     }
@@ -423,11 +423,11 @@ export const ChatWidget = ({ ticket: initialTicket, defaultOpen = false, realtim
                 ...prevTicket,
                 ...payload.new,
                 // Preserve nested objects that aren't in the payload
-                brand: prevTicket.brand,
-                requester: prevTicket.requester,
-                assignee: prevTicket.assignee,
-                group: prevTicket.group,
-                channel: prevTicket.channel
+                // brand: prevTicket.brand,
+                // requester: prevTicket.requester,
+                // assignee: prevTicket.assignee,
+                // group: prevTicket.group,
+                // channel: prevTicket.channel
               };
             });
           }
