@@ -39,15 +39,6 @@ interface Article {
   publishedAt: string | null;
 }
 
-interface UserProfile {
-  userType: string;
-  roleId: string;
-  name: string;
-  Roles: {
-    roleCategory: 'admin' | 'owner' | 'agent';
-  };
-}
-
 export function GuidePage() {
   const navigate = useNavigate();
   const { subdomain } = useParams<{ subdomain: string }>();

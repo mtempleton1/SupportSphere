@@ -8,10 +8,10 @@ interface Message {
   timestamp?: string;
 }
 
-interface OttoResponse {
-  messages: Message[];
-  context: Record<string, any>;
-}
+// interface OttoResponse {
+//   messages: Message[];
+//   context: Record<string, any>;
+// }
 
 interface OttoWidgetProps {
   defaultOpen?: boolean;
@@ -47,6 +47,7 @@ export const OttoWidget = ({ defaultOpen = false }: OttoWidgetProps) => {
 
   // Initial scroll after data loads
   useEffect(() => {
+    setLoading(false);
     if (!loading && messages.length > 0 && !hasScrolledToBottomRef.current) {
       scrollToBottom();
       hasScrolledToBottomRef.current = true;
