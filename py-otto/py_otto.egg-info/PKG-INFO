@@ -1,0 +1,11 @@
+Metadata-Version: 2.2
+Name: py-otto
+Version: 0.1.0
+Requires-Dist: langgraph>=0.0.15
+Requires-Dist: langserve>=0.0.33
+Requires-Dist: langchain-anthropic>=0.1.1
+Requires-Dist: python-dotenv>=1.0.0
+Requires-Dist: fastapi>=0.109.0
+Requires-Dist: uvicorn>=0.27.0
+Requires-Dist: pydantic>=2.5.3
+Dynamic: requires-dist

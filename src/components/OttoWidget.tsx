@@ -116,36 +116,32 @@ export const OttoWidget = ({ defaultOpen = false }: OttoWidgetProps) => {
       // Store wasAtBottom before adding message
       const wasAtBottom = wasAtBottomRef.current;
 
-      // Call Otto service directly
-      const response = await fetch(`${import.meta.env.VITE_OTTO_SERVICE_URL || 'http://localhost:3001'}`, {
+      // Call new Python Otto service
+      const response = await fetch('http://localhost:3001/chat', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
-          'X-User-Profile': JSON.stringify({
-            userId: session.user.id,
-            accountId: session.user.user_metadata.accountId,
-            userType: session.user.user_metadata.userType,
-            roleId: session.user.user_metadata.roleId
-          })
         },
         body: JSON.stringify({
           query: userMessage.content,
           context: {
+            thread_id: session.user.id,  // Use user ID as thread ID
             previousMessages: messages
           }
         })
       });
 
+      if (!response.ok) {
+        throw new Error('Failed to get response from Otto service');
+      }
+
       const { data, error } = await response.json();
       if (error) throw new Error(error);
-
-      const ottoResponse = data as OttoResponse;
       
       // Add Otto's response
       const assistantMessage: Message = {
         role: 'assistant',
-        content: ottoResponse.messages[ottoResponse.messages.length - 1].content,
+        content: data.messages[data.messages.length - 1].content,
         timestamp: new Date().toISOString()
       };
       setMessages(prev => [...prev, assistantMessage]);
