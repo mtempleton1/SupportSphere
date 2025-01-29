@@ -8,6 +8,7 @@ import { DashboardView } from '../components/views/DashboardView';
 import { TicketView } from '../components/views/TicketView';
 import { NewTabDialog } from '../components/NewTabDialog';
 import { TabDataProvider, useTabData } from '../contexts/TabDataContext';
+import { OttoWidget } from '../components/OttoWidget';
 // import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import type { Database } from '../types/supatypes';
 import { RealtimeEvent, TabEvent, AgentPresenceState, TicketPresenceState, TicketPresenceChannelState, PresenceState } from '../types/realtime'
@@ -684,7 +685,6 @@ export function AgentWorkspaceContent() {
       {/* Header */}
       <div className="bg-gray-100">
         <AgentHeader
-          variant={workspace.tabs.find(tab => tab.id === workspace.activeTabId)?.type === 'dashboard' ? 'dashboard' : 'conversation'}
           subdomain={subdomain || ''}
         />
       </div>
@@ -739,6 +739,9 @@ export function AgentWorkspaceContent() {
         isOpen={isNewTabDialogOpen}
         onClose={() => setIsNewTabDialogOpen(false)}
       />
+
+      {/* Add OttoWidget */}
+      <OttoWidget />
     </div>
   );
 }

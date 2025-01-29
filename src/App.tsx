@@ -5,6 +5,7 @@ import { TicketCreate } from './pages/TicketCreate'
 import { AgentWorkspace } from './pages/AgentWorkspace'
 import { AdminPage } from './pages/AdminPage'
 import { SupportSphereHome } from './pages/SupportSphereHome'
+import { GuidePage } from './pages/GuidePage'
 import { ToastProvider } from './contexts/ToastContext'
 import './App.css'
 
@@ -20,6 +21,7 @@ function App() {
             <Route path="tickets/new" element={<TicketCreate />} />
             <Route path="agent/*" element={<AgentWorkspace />} />
             <Route path="admin" element={<AdminPage />} />
+            <Route path="guide" element={<GuidePage />} />
           </Route>
         </Routes>
       </BrowserRouter>
