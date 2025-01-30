@@ -1,17 +1,8 @@
 import { useState, useEffect, KeyboardEvent, useRef } from 'react';
 import { MessageCircle, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-
-interface Message {
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp?: string;
-}
-
-// interface OttoResponse {
-//   messages: Message[];
-//   context: Record<string, any>;
-// }
+import { OttoSystem } from '../otto/core/system';
+import { Message } from '../otto/core/types';
 
 interface OttoWidgetProps {
   defaultOpen?: boolean;
@@ -20,7 +11,7 @@ interface OttoWidgetProps {
 export const OttoWidget = ({ defaultOpen = false }: OttoWidgetProps) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);  // Start with loading true
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
@@ -28,6 +19,7 @@ export const OttoWidget = ({ defaultOpen = false }: OttoWidgetProps) => {
   const hasScrolledToBottomRef = useRef(false);
   const wasAtBottomRef = useRef(false);
   const [isStaffUser, setIsStaffUser] = useState(false);
+  const [otto, setOtto] = useState<OttoSystem | null>(null);
 
   // Function to check if scrolled to bottom
   const isAtBottom = () => {
@@ -47,7 +39,6 @@ export const OttoWidget = ({ defaultOpen = false }: OttoWidgetProps) => {
 
   // Initial scroll after data loads
   useEffect(() => {
-    setLoading(false);
     if (!loading && messages.length > 0 && !hasScrolledToBottomRef.current) {
       scrollToBottom();
       hasScrolledToBottomRef.current = true;
@@ -74,36 +65,54 @@ export const OttoWidget = ({ defaultOpen = false }: OttoWidgetProps) => {
     };
   }, []);
 
-  // Check if user is staff
+  // Initialize Otto system and check if user is staff
   useEffect(() => {
-    async function checkUserRole() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        const { data: profile } = await supabase
-          .from('UserProfiles')
-          .select('userType')
-          .eq('userId', session.user.id)
-          .single();
-        
-        setIsStaffUser(profile?.userType === 'staff');
+    async function initOtto() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          const { data: profile } = await supabase
+            .from('UserProfiles')
+            .select('userType, accountId, roleId')
+            .eq('userId', session.user.id)
+            .single();
+          
+          setIsStaffUser(profile?.userType === 'staff');
+
+          // Initialize Otto if user is staff
+          if (profile?.userType === 'staff') {
+            const newOtto = new OttoSystem({
+              openAiKey: import.meta.env.VITE_OPENAI_API_KEY || '',
+              userProfile: {
+                userId: session.user.id,
+                accountId: profile.accountId || '',
+                userType: profile.userType,
+                roleId: profile.roleId || ''
+              }
+            });
+            setOtto(newOtto);
+          }
+        }
+      } catch (err) {
+        console.error('Error initializing Otto:', err);
+        setError('Failed to initialize Otto');
+      } finally {
+        setLoading(false);
       }
     }
 
-    checkUserRole();
+    initOtto();
   }, []);
 
   const handleSendMessage = async () => {
-    if (!message.trim() || sendingMessage) return;
+    if (!message.trim() || sendingMessage || !otto) return;
 
     try {
       setSendingMessage(true);
       setError(null);
 
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        setError('No active session');
-        return;
-      }
+      // Store wasAtBottom before adding message
+      const wasAtBottom = wasAtBottomRef.current;
 
       // Add user message immediately
       const userMessage: Message = {
@@ -114,38 +123,17 @@ export const OttoWidget = ({ defaultOpen = false }: OttoWidgetProps) => {
       setMessages(prev => [...prev, userMessage]);
       setMessage('');
 
-      // Store wasAtBottom before adding message
-      const wasAtBottom = wasAtBottomRef.current;
-
-      // Call new Python Otto service
-      const response = await fetch('http://localhost:3001/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: userMessage.content,
-          context: {
-            thread_id: session.user.id,  // Use user ID as thread ID
-            previousMessages: messages
-          }
-        })
+      // Get response from Otto
+      const response = await otto.processQuery(userMessage.content, {
+        previousMessages: messages
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to get response from Otto service');
+      if (response.error) {
+        throw new Error(response.error);
       }
 
-      const { data, error } = await response.json();
-      if (error) throw new Error(error);
-      
       // Add Otto's response
-      const assistantMessage: Message = {
-        role: 'assistant',
-        content: data.messages[data.messages.length - 1].content,
-        timestamp: new Date().toISOString()
-      };
-      setMessages(prev => [...prev, assistantMessage]);
+      setMessages(prev => [...prev, ...response.messages]);
 
       // Scroll to bottom if we were at bottom before
       if (wasAtBottom) {
@@ -165,8 +153,8 @@ export const OttoWidget = ({ defaultOpen = false }: OttoWidgetProps) => {
     }
   };
 
-  // Don't render if not a staff user
-  if (!isStaffUser) return null;
+  // Don't render if not a staff user and we're done loading
+  if (!loading && !isStaffUser) return null;
 
   return (
     <div className="fixed bottom-4 right-4 z-50">
@@ -176,6 +164,7 @@ export const OttoWidget = ({ defaultOpen = false }: OttoWidgetProps) => {
           <div className="p-4 border-b flex justify-between items-center">
             <div className="flex items-center gap-3">
               <h2 className="font-medium">Otto AI Assistant</h2>
+              {loading && <span className="text-sm text-gray-500">(Initializing...)</span>}
             </div>
             <button onClick={() => setIsOpen(false)} className="text-gray-500 hover:text-gray-700">
               <X size={20} />
@@ -211,7 +200,7 @@ export const OttoWidget = ({ defaultOpen = false }: OttoWidgetProps) => {
                   </div>
                 ))}
                 {loading && (
-                  <div className="text-center py-4">Loading...</div>
+                  <div className="text-center py-4">Initializing Otto...</div>
                 )}
                 {error && (
                   <div className="text-center text-red-500 py-4">{error}</div>
@@ -223,25 +212,25 @@ export const OttoWidget = ({ defaultOpen = false }: OttoWidgetProps) => {
           {/* Input Area */}
           <div className="border-t p-4">
             <textarea
-              placeholder="Ask Otto anything..."
+              placeholder={loading ? "Initializing Otto..." : "Ask Otto anything..."}
               className="w-full p-2 border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
               rows={3}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyPress={handleKeyPress}
-              disabled={sendingMessage}
+              disabled={loading || sendingMessage}
             />
             <div className="mt-2 flex justify-end">
               <button 
                 onClick={handleSendMessage}
-                disabled={!message.trim() || sendingMessage}
+                disabled={loading || !message.trim() || sendingMessage}
                 className={`px-4 py-2 bg-blue-600 text-white rounded-lg ${
-                  !message.trim() || sendingMessage 
+                  loading || !message.trim() || sendingMessage
                     ? 'opacity-50 cursor-not-allowed' 
                     : 'hover:bg-blue-700'
                 }`}
               >
-                {sendingMessage ? 'Sending...' : 'Send'}
+                {loading ? 'Initializing...' : sendingMessage ? 'Sending...' : 'Send'}
               </button>
             </div>
           </div>

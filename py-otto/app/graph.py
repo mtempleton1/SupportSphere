@@ -1,14 +1,13 @@
-from typing import TypedDict, Sequence
+from typing import TypedDict, Sequence, Dict
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 from langgraph.graph import Graph
 from langgraph.checkpoint.memory import MemorySaver
-import uuid
 
 # Define our state type
 class AgentState(TypedDict):
     messages: Sequence[BaseMessage]
     pending_sends: list
-    id: str  # Added id field
+    id: str  # Add id field to state type
 
 def hello_world_response(state: AgentState) -> AgentState:
     """Generate a simple hello world response."""
@@ -38,40 +37,50 @@ graph = workflow.compile()
 # Create a memory saver for persistence
 memory = MemorySaver()
 
-def invoke_chain(message: str, thread_id: str = "default"):
-    """Helper function to invoke the chain with a new message."""
-    # Initialize config with thread_id and checkpoint namespace
+def invoke_chain(query: str, thread_id: str) -> Dict:
+    """
+    Invoke the chain with the given query and thread ID.
+    """
     config = {
         "configurable": {
             "thread_id": thread_id,
-            "checkpoint_ns": "default",  # Using 'default' namespace for our simple chat
-        }
+            "checkpoint_ns": "default",
+        },
+        "id": thread_id,
     }
     
-    # Get existing state or create new one
-    checkpoint = memory.get_tuple(config)
-    state = checkpoint.checkpoint if checkpoint else {
-        "messages": [HumanMessage(content=message)],
-        "pending_sends": [],
-        "id": str(uuid.uuid4())  # Generate a unique ID for the checkpoint
-    }
+    # Get the checkpoint for this thread
+    checkpoint = memory.get(config)
+    if checkpoint is None:
+        # Initialize state if no checkpoint exists
+        checkpoint = {
+            "messages": [],
+            "pending_sends": [],
+            "id": thread_id,  # Include id in the state
+        }
+    
+    # Add the user's message to the state as a HumanMessage
+    checkpoint["messages"].append(HumanMessage(content=query))
     
     # Run the chain
-    result = graph.invoke(state, config=config)
+    result = graph.invoke(checkpoint, config=config)
     
-    # Ensure result has an ID (in case the graph execution didn't preserve it)
-    if "id" not in result:
-        result["id"] = str(uuid.uuid4())
+    # Ensure id is preserved in the result
+    result["id"] = thread_id
     
-    # Save state
+    # Save the updated state
     memory.put(config, result, {}, {})
     
+    # Convert the result to the format expected by the frontend
     return {
-        "messages": [
-            {
-                "role": msg.type,
-                "content": msg.content
-            }
-            for msg in result["messages"]
-        ]
+        "data": {
+            "messages": [
+                {
+                    "role": "user" if isinstance(msg, HumanMessage) else "assistant",
+                    "content": msg.content
+                }
+                for msg in result["messages"]
+            ]
+        },
+        "error": None
     } 

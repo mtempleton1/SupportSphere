@@ -1,9 +1,13 @@
 import os
-from typing import List, Dict
+import logging
+from typing import List, Dict, Optional
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from app.graph import invoke_chain
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -12,40 +16,39 @@ app = FastAPI(
     description="A simple AI assistant powered by LangGraph",
 )
 
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with your frontend URL
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 class Message(BaseModel):
     role: str
     content: str
 
 class ChatRequest(BaseModel):
     query: str
-    context: Dict = {}
+    context: dict
 
 class ChatResponse(BaseModel):
-    data: Dict[str, List[Message]]
-    error: str | None = None
+    data: dict
+    error: Optional[str] = None
 
-@app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
-    # try:
-    # Extract thread_id from context or use default
-    thread_id = request.context.get("thread_id", "default")
-    
-    # Call the LangGraph chain
-    result = invoke_chain(request.query, thread_id)
-    
-    return ChatResponse(data=result)
-    # except Exception as e:
-    #     print("Error in chat function:", e)
-    #     raise HTTPException(status_code=500, detail=str(e))
+@app.get("/")
+async def root():
+    try:
+        logger.info("Root endpoint called")
+        return {"message": "Hello World"}
+    except Exception as e:
+        logger.error(f"Error in root endpoint: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/chat")
+async def chat(request: ChatRequest) -> ChatResponse:
+    """Chat endpoint that processes messages and returns responses."""
+    try:
+        logger.info(f"Chat endpoint called with request: {request}")
+        thread_id = request.context.get("thread_id", "default")
+        result = invoke_chain(request.query, thread_id)
+        logger.info(f"Chat result: {result}")
+        return ChatResponse(data=result["data"], error=result["error"])
+    except Exception as e:
+        logger.error(f"Error in chat endpoint: {str(e)}", exc_info=True)
+        return ChatResponse(data={}, error=str(e))
 
 if __name__ == "__main__":
     import uvicorn
