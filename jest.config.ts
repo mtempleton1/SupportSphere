@@ -27,6 +27,9 @@ const config: Config.InitialOptions = {
     '!src/**/*.d.ts',
     '!src/**/index.ts',
   ],
+  transformIgnorePatterns: [
+    'node_modules/(?!(@langchain|@anthropic-ai|@supabase)/)'
+  ]
 };
 
 export default config; 
