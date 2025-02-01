@@ -11,7 +11,7 @@ interface OttoWidgetProps {
 export const OttoWidget = ({ defaultOpen = false }: OttoWidgetProps) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(true);  // Start with loading true
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
@@ -69,34 +69,50 @@ export const OttoWidget = ({ defaultOpen = false }: OttoWidgetProps) => {
   useEffect(() => {
     async function initOtto() {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          const { data: profile } = await supabase
-            .from('UserProfiles')
-            .select('userType, accountId, roleId')
-            .eq('userId', session.user.id)
-            .single();
-          
-          setIsStaffUser(profile?.userType === 'staff');
+        setLoading(true);
+        setError(null);
 
-          // Initialize Otto if user is staff
-          if (profile?.userType === 'staff') {
-            const newOtto = new OttoSystem({
-              openAiKey: import.meta.env.VITE_OPENAI_API_KEY || '',
-              userProfile: {
-                userId: session.user.id,
-                accountId: profile.accountId || '',
-                userType: profile.userType,
-                roleId: profile.roleId || ''
-              }
-            });
-            setOtto(newOtto);
-          }
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          setLoading(false);
+          return;
         }
+
+        const { data: profile, error: profileError } = await supabase
+          .from('UserProfiles')
+          .select('userType, accountId, roleId')
+          .eq('userId', session.user.id)
+          .single();
+
+        if (profileError) {
+          throw new Error(`Failed to load user profile: ${profileError.message}`);
+        }
+        
+        setIsStaffUser(profile?.userType === 'staff');
+
+        // Initialize Otto if user is staff
+        if (profile?.userType === 'staff') {
+          const config = {
+            openAIApiKey: import.meta.env.VITE_OPENAI_API_KEY,
+            supabaseConfig: {
+              projectUrl: import.meta.env.VITE_SUPABASE_PROJECT_URL,
+              anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY
+            },
+            userProfile: {
+              userId: session.user.id,
+              accountId: profile.accountId,
+              userType: profile.userType,
+              roleId: profile.roleId
+            }
+          };
+          const newOtto = new OttoSystem(config);
+          setOtto(newOtto);
+        }
+
+        setLoading(false);
       } catch (err) {
         console.error('Error initializing Otto:', err);
-        setError('Failed to initialize Otto');
-      } finally {
+        setError(err instanceof Error ? err.message : 'Failed to initialize Otto');
         setLoading(false);
       }
     }
@@ -175,35 +191,39 @@ export const OttoWidget = ({ defaultOpen = false }: OttoWidgetProps) => {
           <div className="flex-1 flex flex-col min-h-0">
             <div className="flex-1 overflow-y-auto relative">
               <div ref={chatContainerRef} className="p-4 space-y-4">
-                {messages.map((msg, index) => (
-                  <div key={index} className="flex space-x-3">
-                    <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0">
-                      {/* Avatar placeholder */}
-                    </div>
-                    <div>
-                      <div className="flex items-center space-x-2 mb-1">
-                        <span className="font-medium">
-                          {msg.role === 'assistant' ? 'Otto' : 'You'}
-                        </span>
-                      </div>
-                      <div className={`rounded-lg p-3 ${
-                        msg.role === 'assistant' ? 'bg-blue-50' : 'bg-gray-100'
-                      }`}>
-                        <p className="text-left whitespace-pre-wrap">{msg.content}</p>
-                      </div>
-                      {msg.timestamp && (
-                        <div className="text-xs text-gray-500 mt-1">
-                          {new Date(msg.timestamp).toLocaleString()}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {loading && (
+                {loading ? (
                   <div className="text-center py-4">Initializing Otto...</div>
-                )}
-                {error && (
+                ) : error ? (
                   <div className="text-center text-red-500 py-4">{error}</div>
+                ) : messages.length === 0 ? (
+                  <div className="text-gray-500 text-center">
+                    Ask me anything about your tickets or support tasks!
+                  </div>
+                ) : (
+                  messages.map((msg, index) => (
+                    <div key={index} className="flex space-x-3">
+                      <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0">
+                        {/* Avatar placeholder */}
+                      </div>
+                      <div>
+                        <div className="flex items-center space-x-2 mb-1">
+                          <span className="font-medium">
+                            {msg.role === 'assistant' ? 'Otto' : 'You'}
+                          </span>
+                        </div>
+                        <div className={`rounded-lg p-3 ${
+                          msg.role === 'assistant' ? 'bg-blue-50' : 'bg-gray-100'
+                        }`}>
+                          <p className="text-left whitespace-pre-wrap">{msg.content}</p>
+                        </div>
+                        {msg.timestamp && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            {new Date(msg.timestamp).toLocaleString()}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))
                 )}
               </div>
             </div>

@@ -126,8 +126,6 @@ export const LoginDialog = ({
         }
       });
 
-      console.log("STAFF PROFILES", response)
-      console.log("PROFILE ERROR", profileError)
       if (profileError || !response?.data) {
         throw new Error('No staff members found');
       }

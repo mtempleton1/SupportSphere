@@ -1,19 +1,14 @@
-import { BaseTool } from "./base.js";
-import { CurrentTimeTool } from "./currentTime.js";
+import { BaseTool, ToolDefinition } from "./base";
 
 export class ToolRegistry {
-  private tools: Map<string, BaseTool> = new Map();
+  private tools: Map<string, BaseTool>;
 
-  constructor() {
-    this.registerDefaultTools();
+  constructor(initialTools: readonly BaseTool[] = []) {
+    this.tools = new Map();
+    initialTools.forEach(tool => this.registerTool(tool));
   }
 
-  private registerDefaultTools() {
-    // Register the current time tool by default
-    this.registerTool(new CurrentTimeTool());
-  }
-
-  registerTool(tool: BaseTool) {
+  registerTool(tool: BaseTool): void {
     this.tools.set(tool.name, tool);
   }
 
@@ -21,11 +16,7 @@ export class ToolRegistry {
     return this.tools.get(name);
   }
 
-  getAllTools(): BaseTool[] {
-    return Array.from(this.tools.values());
-  }
-
-  getToolDefinitions() {
-    return this.getAllTools().map(tool => tool.getDefinition());
+  getToolDefinitions(): ToolDefinition[] {
+    return Array.from(this.tools.values()).map(tool => tool.getDefinition());
   }
 } 

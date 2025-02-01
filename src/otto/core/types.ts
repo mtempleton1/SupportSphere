@@ -1,4 +1,5 @@
 import { BaseMessage, HumanMessage, AIMessage, SystemMessage } from "@langchain/core/messages";
+import { type SupabaseConfig } from "../../lib/supabase";
 
 export interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -13,7 +14,16 @@ export interface NodeState {
 }
 
 export interface OttoConfig {
-  openAiKey: string;
+  openAIApiKey?: string;
+  supabaseConfig?: {
+    projectUrl?: string;
+    anonKey?: string;
+    serviceRoleKey?: string;
+  };
+  langSmithConfig?: {
+    apiUrl: string;
+    apiKey: string;
+  };
   userProfile: {
     userId: string;
     accountId: string;

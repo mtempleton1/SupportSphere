@@ -23,8 +23,8 @@ if (!supabaseUrl || !supabaseServiceKey) {
 }
 
 // Now TypeScript knows these are strings
-const SUPABASE_URL: string = supabaseUrl
-const SUPABASE_SERVICE_KEY: string = supabaseServiceKey
+export const SUPABASE_URL: string = supabaseUrl
+export const SUPABASE_SERVICE_KEY: string = supabaseServiceKey
 
 const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
   auth: {
