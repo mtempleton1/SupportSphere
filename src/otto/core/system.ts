@@ -13,6 +13,11 @@ import { createTools } from "./tools";
 
 // import { BaseMessage } from "@langchain/core/messages";
 
+import { traceable } from "langsmith/traceable";
+import { wrapOpenAI } from "langsmith/wrappers";
+import { OpenAI } from "openai";
+import { LangChainTracer } from "langchain/callbacks";
+
 // Utility function to generate UUID that works in both browser and Node.js
 function generateUUID(): string {
   // Check if we're in a Node.js environment with crypto.randomUUID
@@ -41,6 +46,7 @@ export class OttoSystem {
   private model: ChatOpenAI;
   private toolRegistry: ToolRegistry;
   private langsmith?: Client;
+  private tracer?: LangChainTracer;
   private metrics: {
     total: number;
     actionIdentificationSuccess: number;
@@ -49,8 +55,22 @@ export class OttoSystem {
     errors: number;
     errorTypes: Record<string, number>;
   };
+  private wrappedTrackMetrics: (runId: string, metrics: MetricsData) => Promise<void>;
+  private wrappedProcessQuery: (query: string, context?: Record<string, any>) => Promise<OttoResponse>;
 
   constructor(config: OttoConfig) {
+    // Add environment variable diagnostic logging
+    console.log("ALL")
+    console.log(import.meta.env)
+    console.log('LangSmith Environment Variables:', {
+      VITE_LANGCHAIN_TRACING_V2: import.meta.env.VITE_LANGCHAIN_TRACING_V2,
+      VITE_LANGSMITH_TRACING_V2: import.meta.env.VITE_LANGSMITH_TRACING_V2,
+      VITE_LANGCHAIN_PROJECT: import.meta.env.VITE_LANGCHAIN_PROJECT,
+      VITE_LANGSMITH_PROJECT: import.meta.env.VITE_LANGSMITH_PROJECT,
+      VITE_LANGCHAIN_API_KEY: import.meta.env.VITE_LANGCHAIN_API_KEY ? 'Set' : 'Not Set',
+      VITE_LANGSMITH_API_KEY: import.meta.env.VITE_LANGSMITH_API_KEY ? 'Set' : 'Not Set'
+    });
+
     // Initialize the tool registry first
     this.toolRegistry = new ToolRegistry(createTools({
       openAIApiKey: config.openAIApiKey || import.meta.env.VITE_OPENAI_API_KEY,
@@ -61,12 +81,14 @@ export class OttoSystem {
       }
     }));
 
-    // Initialize the base language model
-    this.baseModel = new ChatOpenAI({
+    // Initialize the base language model with wrapped OpenAI
+    const openAIClient = new ChatOpenAI({
       modelName: "gpt-4",
       temperature: 0.7,
       openAIApiKey: config.openAIApiKey || import.meta.env.VITE_OPENAI_API_KEY
     });
+
+    this.baseModel = openAIClient;
 
     // Create the bound model with tools
     this.model = this.baseModel.bind({
@@ -74,11 +96,20 @@ export class OttoSystem {
     }) as ChatOpenAI;
 
     // Initialize LangSmith client if credentials are available
-    if (config.langSmithConfig) {
-      this.langsmith = new Client({
-        apiUrl: config.langSmithConfig.apiUrl,
-        apiKey: config.langSmithConfig.apiKey,
-      });
+    const langsmithApiKey = import.meta.env.VITE_LANGSMITH_API_KEY || import.meta.env.VITE_LANGCHAIN_API_KEY;
+    if (langsmithApiKey) {
+      try {
+        this.langsmith = new Client({
+          apiKey: langsmithApiKey,
+        });
+        
+        console.log('LangSmith client initialized successfully with project:', import.meta.env.VITE_LANGCHAIN_PROJECT);
+        
+      } catch (error) {
+        console.error('Failed to initialize LangSmith client:', error);
+      }
+    } else {
+      console.warn('No LangSmith API key found in environment variables (checked VITE_LANGSMITH_API_KEY and VITE_LANGCHAIN_API_KEY)');
     }
 
     // Initialize metrics
@@ -90,6 +121,25 @@ export class OttoSystem {
       errors: 0,
       errorTypes: {},
     };
+
+    // Wrap methods with traceable
+    this.wrappedTrackMetrics = traceable(
+      this.trackMetrics.bind(this),
+      { 
+        name: "track_metrics", 
+        run_type: "chain",
+        project_name: "otto-support"
+      }
+    );
+
+    this.wrappedProcessQuery = traceable(
+      this.processQuery.bind(this),
+      { 
+        name: "process_query", 
+        run_type: "chain",
+        project_name: "otto-support"
+      }
+    );
   }
 
   private async trackMetrics(runId: string, metrics: MetricsData) {
@@ -107,21 +157,33 @@ export class OttoSystem {
 
     // Track in LangSmith if available
     if (this.langsmith) {
-      await this.langsmith.createRun({
-        name: "otto_query",
-        id: runId,
-        run_type: "chain",
-        inputs: metrics,
-        outputs: {
-          success: !metrics.error,
-          error: metrics.error,
-        },
-        start_time: Date.now(),
-        end_time: Date.now(),
-        extra: {
-          metrics: this.getAggregateMetrics()
-        }
-      });
+      try {
+        const startTime = Date.now();
+        await this.langsmith.createRun({
+          name: "otto_query",
+          id: runId,
+          run_type: "chain",
+          inputs: metrics,
+          outputs: {
+            success: !metrics.error,
+            error: metrics.error,
+          },
+          start_time: startTime,
+          end_time: Date.now(),
+          extra: {
+            metrics: this.getAggregateMetrics()
+          },
+          project_name: "otto-support"  // Explicitly set project name here
+        });
+
+        // Give LangSmith a moment to process the run before verification
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+      } catch (error) {
+        console.error('Failed to create LangSmith run:', error);
+      }
+    } else {
+      console.warn('LangSmith client not initialized, tracing disabled');
     }
   }
 
@@ -138,7 +200,7 @@ export class OttoSystem {
     };
   }
 
-  async processQuery(query: string, context?: Record<string, any>): Promise<OttoResponse> {
+  private async processQuery(query: string, context?: Record<string, any>): Promise<OttoResponse> {
     const startTime = Date.now();
     const runId = generateUUID();
     const metrics: MetricsData = {
@@ -240,7 +302,7 @@ export class OttoSystem {
         // Get final response from model after tool execution
         const finalResponse = await this.model.invoke(messages);
         metrics.responseTimeMs = Date.now() - startTime;
-        await this.trackMetrics(runId, metrics);
+        await this.wrappedTrackMetrics(runId, metrics);
 
         return {
           messages: [
@@ -258,7 +320,7 @@ export class OttoSystem {
 
       // No tool calls or function calls, just a regular response
       metrics.responseTimeMs = Date.now() - startTime;
-      await this.trackMetrics(runId, metrics);
+      await this.wrappedTrackMetrics(runId, metrics);
 
       // Convert the response message
       const responseMessage = fromLangChainMessage(response);
@@ -279,7 +341,7 @@ export class OttoSystem {
       metrics.responseTimeMs = Date.now() - startTime;
       metrics.error = error instanceof Error ? error.message : 'An unexpected error occurred';
       metrics.errorType = 'system_error';
-      await this.trackMetrics(runId, metrics);
+      await this.wrappedTrackMetrics(runId, metrics);
 
       console.error('Error in processQuery:', error);
       return {
@@ -288,5 +350,10 @@ export class OttoSystem {
         error: error instanceof Error ? error.message : 'An unexpected error occurred'
       };
     }
+  }
+
+  // Public method that uses the wrapped version
+  public async query(query: string, context?: Record<string, any>): Promise<OttoResponse> {
+    return this.wrappedProcessQuery(query, context);
   }
 } 
