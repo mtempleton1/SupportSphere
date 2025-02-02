@@ -1,5 +1,4 @@
 import { BaseMessage, HumanMessage, AIMessage, SystemMessage } from "@langchain/core/messages";
-import { type SupabaseConfig } from "../../lib/supabase";
 
 export interface Message {
   role: 'user' | 'assistant' | 'system';

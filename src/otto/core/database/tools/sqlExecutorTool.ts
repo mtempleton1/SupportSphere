@@ -28,7 +28,6 @@ export class SQLExecutorTool extends BaseTool {
   }
 
   async execute(args: z.infer<typeof this.schema>, config?: RunnableConfig): Promise<string> {
-    console.log("SQL EXECUTOR TOOL")
     try {
       // Replace parameters in the query
       const finalQuery = await this.replaceQueryParameters(args.sql);
@@ -38,10 +37,12 @@ export class SQLExecutorTool extends BaseTool {
         'execute_raw_query',
         { query: finalQuery }
       );
-
+      console.log("RESULT")
+      console.log(result)
       if (error) {
         throw error;
       }
+
 
       return JSON.stringify({
         success: true,

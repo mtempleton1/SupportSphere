@@ -16,8 +16,8 @@ export const OttoWidget = ({ defaultOpen = false }: OttoWidgetProps) => {
   const [message, setMessage] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
-  const hasScrolledToBottomRef = useRef(false);
-  const wasAtBottomRef = useRef(false);
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  const wasAtBottomRef = useRef(true);
   const [isStaffUser, setIsStaffUser] = useState(false);
   const [otto, setOtto] = useState<OttoSystem | null>(null);
 
@@ -31,39 +31,54 @@ export const OttoWidget = ({ defaultOpen = false }: OttoWidgetProps) => {
   };
 
   // Function to scroll to bottom
-  const scrollToBottom = () => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+  const scrollToBottom = (force: boolean = false) => {
+    if (chatContainerRef.current && (shouldAutoScroll || force)) {
+      const container = chatContainerRef.current;
+      // Use requestAnimationFrame to ensure DOM update is complete
+      requestAnimationFrame(() => {
+        container.scrollTop = container.scrollHeight;
+      });
     }
   };
 
-  // Initial scroll after data loads
+  // Watch for new messages and scroll if needed
   useEffect(() => {
-    if (!loading && messages.length > 0 && !hasScrolledToBottomRef.current) {
-      scrollToBottom();
-      hasScrolledToBottomRef.current = true;
+    if (messages.length > 0) {
+      // Force scroll on new messages
+      scrollToBottom(true);
     }
-  }, [loading, messages.length]);
+  }, [messages, shouldAutoScroll]); // Add shouldAutoScroll as dependency
 
-  // Add scroll event listener
+  // Add scroll event listener to track user scroll position
   useEffect(() => {
     const container = chatContainerRef.current;
     if (!container) return;
 
     const handleScroll = () => {
-      wasAtBottomRef.current = isAtBottom();
+      const atBottom = isAtBottom();
+      setShouldAutoScroll(atBottom);
+      wasAtBottomRef.current = atBottom;
     };
 
     container.addEventListener('scroll', handleScroll);
-    container.addEventListener('wheel', handleScroll);
     window.addEventListener('resize', handleScroll);
+
+    // Initial check
+    handleScroll();
 
     return () => {
       container.removeEventListener('scroll', handleScroll);
-      container.removeEventListener('wheel', handleScroll);
       window.removeEventListener('resize', handleScroll);
     };
   }, []);
+
+  // Initial scroll after loading
+  useEffect(() => {
+    if (!loading && messages.length > 0) {
+      // Small delay to ensure container is properly rendered
+      setTimeout(() => scrollToBottom(true), 100);
+    }
+  }, [loading]);
 
   // Initialize Otto system and check if user is staff
   useEffect(() => {
@@ -123,42 +138,42 @@ export const OttoWidget = ({ defaultOpen = false }: OttoWidgetProps) => {
   const handleSendMessage = async () => {
     if (!message.trim() || sendingMessage || !otto) return;
 
-    // try {
-    setSendingMessage(true);
-    setError(null);
+    try {
+      setSendingMessage(true);
+      setError(null);
 
-    // Store wasAtBottom before adding message
-    const wasAtBottom = wasAtBottomRef.current;
+      // Add user message immediately
+      const userMessage: Message = {
+        role: 'user',
+        content: message.trim(),
+        timestamp: new Date().toISOString()
+      };
+      setMessages(prev => [...prev, userMessage]);
+      setMessage('');
+      setShouldAutoScroll(true); // Enable auto-scroll when sending new message
 
-    // Add user message immediately
-    const userMessage: Message = {
-      role: 'user',
-      content: message.trim(),
-      timestamp: new Date().toISOString()
-    };
-    setMessages(prev => [...prev, userMessage]);
-    setMessage('');
-    // Get response from Otto
-    const response = await otto.query(userMessage.content, {
-      previousMessages: messages
-    });
-    console.log(response);
-    if (response.error) {
-      throw new Error(response.error);
+      // Get response from Otto
+      const response = await otto.query(userMessage.content, {
+        previousMessages: messages
+      });
+      
+      if (response.error) {
+        throw new Error(response.error);
+      }
+
+      // Only add Otto's latest response message
+      const assistantMessages = response.messages.filter(msg => msg.role === 'assistant');
+      if (assistantMessages.length > 0) {
+        // Take only the last assistant message
+        const latestMessage = assistantMessages[assistantMessages.length - 1];
+        setMessages(prev => [...prev, latestMessage]);
+      }
+    } catch (err) {
+      console.error('Error sending message:', err);
+      setError(err instanceof Error ? err.message : 'Failed to send message');
+    } finally {
+      setSendingMessage(false);
     }
-
-    // Add Otto's response
-    setMessages(prev => [...prev, ...response.messages]);
-
-    // Scroll to bottom if we were at bottom before
-    if (wasAtBottom) {
-      setTimeout(scrollToBottom, 100);
-    }
-    // } catch (err) {
-    //   setError(err instanceof Error ? err.message : 'Failed to send message');
-    // } finally {
-    //   setSendingMessage(false);
-    // }
   };
 
   const handleKeyPress = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -187,19 +202,19 @@ export const OttoWidget = ({ defaultOpen = false }: OttoWidgetProps) => {
           </div>
 
           {/* Chat Messages */}
-          <div className="flex-1 flex flex-col min-h-0">
-            <div className="flex-1 overflow-y-auto relative">
-              <div ref={chatContainerRef} className="p-4 space-y-4">
-                {loading ? (
-                  <div className="text-center py-4">Initializing Otto...</div>
-                ) : error ? (
-                  <div className="text-center text-red-500 py-4">{error}</div>
-                ) : messages.length === 0 ? (
-                  <div className="text-gray-500 text-center">
-                    Ask me anything about your tickets or support tasks!
-                  </div>
-                ) : (
-                  messages.map((msg, index) => (
+          <div className="flex-1 overflow-y-auto" ref={chatContainerRef}>
+            <div className="p-4 space-y-4">
+              {loading ? (
+                <div className="text-center py-4">Initializing Otto...</div>
+              ) : error ? (
+                <div className="text-center text-red-500 py-4">{error}</div>
+              ) : messages.length === 0 ? (
+                <div className="text-gray-500 text-center">
+                  Ask me anything about your tickets or support tasks!
+                </div>
+              ) : (
+                <>
+                  {messages.map((msg, index) => (
                     <div key={index} className="flex space-x-3">
                       <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0">
                         {/* Avatar placeholder */}
@@ -222,9 +237,26 @@ export const OttoWidget = ({ defaultOpen = false }: OttoWidgetProps) => {
                         )}
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
+                  ))}
+                  {sendingMessage && (
+                    <div className="flex space-x-3">
+                      <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0" />
+                      <div>
+                        <div className="flex items-center space-x-2 mb-1">
+                          <span className="font-medium">Otto</span>
+                        </div>
+                        <div className="bg-blue-50 rounded-lg p-3">
+                          <div className="flex space-x-1">
+                            <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                            <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                            <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
 

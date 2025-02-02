@@ -3,6 +3,7 @@ import { BaseTool, RunnableConfig } from "../../tools/base";
 import { ChatOpenAI } from "@langchain/openai";
 import { SchemaManager } from "../schema/schemaManager";
 import { TableSchema } from "../types/queryTypes";
+import { TableAnalyzerTool } from "./tableAnalyzerTool";
 
 export class SchemaFilterTool extends BaseTool {
   name = "filterSchema";
@@ -10,6 +11,7 @@ export class SchemaFilterTool extends BaseTool {
   
   private llm: ChatOpenAI;
   private schemaManager: SchemaManager;
+  private tableAnalyzer: TableAnalyzerTool;
 
   schema = z.object({
     query: z.string().describe("The natural language query to analyze for relevant schema information")
@@ -23,35 +25,7 @@ export class SchemaFilterTool extends BaseTool {
       openAIApiKey: openAIApiKey
     });
     this.schemaManager = SchemaManager.getInstance();
-  }
-
-  private getRelevantTables(question: string): Set<string> {
-    const tableKeywords: Record<string, string[]> = {
-      'Tickets': ['ticket', 'tickets', 'issue', 'issues', 'request', 'requests', 'task', 'tasks', 'incident', 'problem'],
-      'UserProfiles': ['user', 'users', 'staff', 'agent', 'agents', 'requester', 'assignee'],
-      'Groups': ['group', 'groups', 'team', 'teams'],
-      'Organizations': ['organization', 'organizations', 'org', 'orgs', 'company', 'companies']
-    };
-
-    const relevantTables = new Set<string>();
-    const lowerQuestion = question.toLowerCase();
-
-    Object.entries(tableKeywords).forEach(([table, keywords]) => {
-      if (keywords.some(keyword => lowerQuestion.includes(keyword))) {
-        relevantTables.add(table);
-      }
-    });
-
-    // Always include Tickets table for ticket-related operations
-    relevantTables.add('Tickets');
-
-    // If we're dealing with users/staff, include UserProfiles
-    if (lowerQuestion.includes('i') || lowerQuestion.includes('my') || 
-        lowerQuestion.includes('me') || lowerQuestion.includes('assigned')) {
-      relevantTables.add('UserProfiles');
-    }
-
-    return relevantTables;
+    this.tableAnalyzer = new TableAnalyzerTool(openAIApiKey);
   }
 
   private filterSchemaForTables(schema: Map<string, TableSchema>, relevantTables: Set<string>): string {
@@ -97,14 +71,25 @@ export class SchemaFilterTool extends BaseTool {
 
   async execute(args: z.infer<typeof this.schema>, config?: RunnableConfig): Promise<string> {
     try {
-      console.log("SCHEMA FILTER TOOL")
+      
+      // Get the full schema
       const schema = await this.schemaManager.getSchema();
-      const relevantTables = this.getRelevantTables(args.query);
+      
+      // Use the TableAnalyzer to determine relevant tables
+      const analyzerResult = await this.tableAnalyzer.execute({
+        query: args.query,
+        includeRelatedTables: true
+      }, config);
+      
+      const { tables: relevantTableNames } = JSON.parse(analyzerResult).success 
+        ? JSON.parse(analyzerResult) as { tables: string[] }
+        : { tables: [] };
+      
+      const relevantTables = new Set<string>(relevantTableNames);
+      
+      // Filter the schema to only include relevant tables
       const filteredSchema = this.filterSchemaForTables(schema, relevantTables);
-      console.log("SCHEMA")
-      console.log(schema)
-      console.log("FILTERED SCHEMA")
-      console.log(filteredSchema)
+      
 
       return JSON.stringify({
         success: true,

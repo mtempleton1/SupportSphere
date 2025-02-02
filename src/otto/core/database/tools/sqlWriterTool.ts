@@ -23,13 +23,45 @@ export class SQLWriterTool extends BaseTool {
   }
 
   private validateColumnNames(query: string): string {
+    // Replace common incorrect column names with correct ones
     const columnMappings: Record<string, string> = {
       'assignee_id': 'assigneeId',
       'user_id': 'userId',
       'ticket_id': 'ticketId',
       'account_id': 'accountId',
       'created_at': 'createdAt',
-      'updated_at': 'updatedAt'
+      'updated_at': 'updatedAt',
+      'company_id': 'accountId',
+      'companyId': 'accountId',
+      'organization_id': 'organizationId',
+      'org_id': 'organizationId',
+      'group_id': 'groupId',
+      'brand_id': 'brandId',
+      'role_id': 'roleId',
+      'requester_id': 'requesterId',
+      'submitter_id': 'submitterId',
+      'macro_id': 'macroId',
+      'category_id': 'categoryId',
+      'channel_id': 'channelId',
+      'permission_id': 'permissionId',
+      'tag_id': 'tagId',
+      'solved_at': 'solvedAt',
+      'closed_at': 'closedAt',
+      'due_date': 'dueDate',
+      'last_read_at': 'lastReadAt',
+      'read_at': 'readAt',
+      'first_response_at': 'firstResponseAt',
+      'is_active': 'isActive',
+      'is_default': 'isDefault',
+      'is_enabled': 'isEnabled',
+      'is_shared': 'isShared',
+      'is_public': 'isPublic',
+      'is_suspended': 'isSuspended',
+      'is_verified': 'isVerified',
+      'is_online': 'isOnline',
+      'is_enterprise': 'isEnterpriseOnly',
+      'is_staff': 'isStaffRole',
+      'is_personal': 'isPersonal'
     };
 
     let validatedQuery = query;
@@ -71,6 +103,13 @@ CRITICAL RULES:
 4. Use proper camelCase for column names
 5. Always quote table and column names with double quotes
 6. Return only the SQL query, no explanation or additional text
+7. ONLY use column names that are explicitly listed in the schema above
+8. NEVER guess or make up column names - if you're unsure about a column name, check the schema
+9. Common mistakes to avoid:
+   - Don't use 'company_id' or 'companyId' - use 'accountId' instead
+   - Don't use 'user_id' - use 'userId' instead
+   - Don't use 'created_at' - use 'createdAt' instead
+   - Don't use 'updated_at' - use 'updatedAt' instead
 
 Question: ${question}`;
   }
@@ -82,27 +121,73 @@ Question: ${question}`;
     
     const lines = content.split('\n');
     
-    // Try to find a line that starts with SELECT or WITH
-    const sqlLine = lines.find((line: string) => 
-      line.trim().toUpperCase().startsWith('SELECT') ||
-      line.trim().toUpperCase().startsWith('WITH')
-    );
-
-    // If we found a SQL line, return it, otherwise return the whole content
-    return sqlLine || content;
+    // Find the start and end indices of the SQL query
+    let startIndex = -1;
+    let endIndex = -1;
+    
+    // Look for the start of the SQL query (SELECT or WITH)
+    for (let i = 0; i < lines.length; i++) {
+      const trimmedLine = lines[i].trim().toUpperCase();
+      if (trimmedLine.startsWith('SELECT') || trimmedLine.startsWith('WITH')) {
+        startIndex = i;
+        break;
+      }
+    }
+    
+    // If we found a start, look for the end (empty line or line starting with non-SQL keywords)
+    if (startIndex !== -1) {
+      for (let i = startIndex + 1; i < lines.length; i++) {
+        const trimmedLine = lines[i].trim().toUpperCase();
+        // If we hit an empty line or a line that doesn't look like part of the SQL query
+        if (!trimmedLine || 
+            (!trimmedLine.startsWith('SELECT') && 
+             !trimmedLine.startsWith('FROM') && 
+             !trimmedLine.startsWith('WHERE') && 
+             !trimmedLine.startsWith('JOIN') && 
+             !trimmedLine.startsWith('LEFT') && 
+             !trimmedLine.startsWith('RIGHT') && 
+             !trimmedLine.startsWith('INNER') && 
+             !trimmedLine.startsWith('GROUP') && 
+             !trimmedLine.startsWith('ORDER') && 
+             !trimmedLine.startsWith('HAVING') && 
+             !trimmedLine.startsWith('LIMIT') && 
+             !trimmedLine.startsWith('OFFSET') && 
+             !trimmedLine.startsWith('AND') && 
+             !trimmedLine.startsWith('OR') && 
+             !trimmedLine.startsWith('ON') && 
+             !trimmedLine.startsWith('WITH') && 
+             !trimmedLine.startsWith('UNION') && 
+             !trimmedLine.startsWith('INTERSECT') && 
+             !trimmedLine.startsWith('EXCEPT'))) {
+          endIndex = i - 1;
+          break;
+        }
+      }
+      // If we didn't find an end, assume it goes to the end of the content
+      if (endIndex === -1) {
+        endIndex = lines.length - 1;
+      }
+      
+      // Extract and join the SQL query lines
+      return lines.slice(startIndex, endIndex + 1)
+        .map(line => line.trim())
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+    
+    // If no SQL query was found, return the whole content
+    return content;
   }
 
   async execute(args: z.infer<typeof this.schema>, config?: RunnableConfig): Promise<string> {
     try {
-      console.log("SQL WRITER TOOL");
       const prompt = await this.buildPrompt(args.query, args.filteredSchema);
       
       const response = await this.llm.invoke(prompt, config);
-      console.log("LLM Response:", response);
       
       // Extract and clean the SQL query
       let sqlQuery = this.extractSQLFromResponse(response);
-      console.log("Extracted SQL:", sqlQuery);
 
       // Validate column names
       sqlQuery = this.validateColumnNames(sqlQuery);
