@@ -123,43 +123,42 @@ export const OttoWidget = ({ defaultOpen = false }: OttoWidgetProps) => {
   const handleSendMessage = async () => {
     if (!message.trim() || sendingMessage || !otto) return;
 
-    try {
-      setSendingMessage(true);
-      setError(null);
+    // try {
+    setSendingMessage(true);
+    setError(null);
 
-      // Store wasAtBottom before adding message
-      const wasAtBottom = wasAtBottomRef.current;
+    // Store wasAtBottom before adding message
+    const wasAtBottom = wasAtBottomRef.current;
 
-      // Add user message immediately
-      const userMessage: Message = {
-        role: 'user',
-        content: message.trim(),
-        timestamp: new Date().toISOString()
-      };
-      setMessages(prev => [...prev, userMessage]);
-      setMessage('');
-
-      // Get response from Otto
-      const response = await otto.processQuery(userMessage.content, {
-        previousMessages: messages
-      });
-
-      if (response.error) {
-        throw new Error(response.error);
-      }
-
-      // Add Otto's response
-      setMessages(prev => [...prev, ...response.messages]);
-
-      // Scroll to bottom if we were at bottom before
-      if (wasAtBottom) {
-        setTimeout(scrollToBottom, 100);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send message');
-    } finally {
-      setSendingMessage(false);
+    // Add user message immediately
+    const userMessage: Message = {
+      role: 'user',
+      content: message.trim(),
+      timestamp: new Date().toISOString()
+    };
+    setMessages(prev => [...prev, userMessage]);
+    setMessage('');
+    // Get response from Otto
+    const response = await otto.query(userMessage.content, {
+      previousMessages: messages
+    });
+    console.log(response);
+    if (response.error) {
+      throw new Error(response.error);
     }
+
+    // Add Otto's response
+    setMessages(prev => [...prev, ...response.messages]);
+
+    // Scroll to bottom if we were at bottom before
+    if (wasAtBottom) {
+      setTimeout(scrollToBottom, 100);
+    }
+    // } catch (err) {
+    //   setError(err instanceof Error ? err.message : 'Failed to send message');
+    // } finally {
+    //   setSendingMessage(false);
+    // }
   };
 
   const handleKeyPress = (e: KeyboardEvent<HTMLTextAreaElement>) => {

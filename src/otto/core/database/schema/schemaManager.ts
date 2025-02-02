@@ -113,7 +113,7 @@ export class SchemaManager {
             AND table_type = 'BASE TABLE'
           `
         });
-
+      
       if (tablesError) throw tablesError;
 
       // Clear existing cache

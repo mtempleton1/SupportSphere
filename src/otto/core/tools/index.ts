@@ -7,11 +7,12 @@ import { type SupabaseConfig } from "../../../lib/supabase";
 export interface ToolsConfig {
   openAIApiKey: string;
   supabaseConfig: SupabaseConfig;
+  userId: string;
 }
 
 export function createTools(config: ToolsConfig) {
   return [
-    new DatabaseQueryTool(config.openAIApiKey, config.supabaseConfig),
+    new DatabaseQueryTool(config.openAIApiKey, config.supabaseConfig, config.userId),
   ] as const;
 }
 

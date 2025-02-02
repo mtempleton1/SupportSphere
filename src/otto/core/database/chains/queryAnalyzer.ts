@@ -322,7 +322,8 @@ Remember to:
       function_call: { name: "analyze_query" }
     }).invoke(prompt);
 
-
+    console.log("IN ANALYZEEEEEEEEEE")
+    console.log(response)
     // Extract the function call result
     const functionCall = response.additional_kwargs?.function_call;
     if (!functionCall?.arguments) {
@@ -331,7 +332,8 @@ Remember to:
 
     // Parse the function arguments
     const parsedArgs = JSON.parse(functionCall.arguments);
-
+    console.log("PARSED ARGS")
+    console.log(parsedArgs)
     // Validate and fix column names in the query
     if (parsedArgs.primaryQuery) {
       parsedArgs.primaryQuery = this.validateColumnNames(parsedArgs.primaryQuery);
@@ -345,7 +347,8 @@ Remember to:
 
     // Validate against our schema
     const result = QuerySchema.parse(parsedArgs);
-    
+    console.log("RESULT")
+    console.log(result)
     return result;
   }
 } 

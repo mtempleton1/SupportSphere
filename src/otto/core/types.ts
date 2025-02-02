@@ -21,8 +21,9 @@ export interface OttoConfig {
     serviceRoleKey?: string;
   };
   langSmithConfig?: {
-    apiUrl: string;
-    apiKey: string;
+    apiUrl?: string;
+    apiKey?: string;
+    projectName?: string;
   };
   userProfile: {
     userId: string;
