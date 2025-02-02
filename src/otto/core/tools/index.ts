@@ -1,7 +1,9 @@
 export { BaseTool, type ToolDefinition } from './base.js';
 export { ToolRegistry } from './registry.js';
 export { CurrentTimeTool } from './currentTime.js';
-import { DatabaseQueryTool } from "../database/tools/databaseQueryTool";
+import { SchemaFilterTool } from "../database/tools/schemaFilterTool";
+import { SQLWriterTool } from "../database/tools/sqlWriterTool";
+import { SQLExecutorTool } from "../database/tools/sqlExecutorTool";
 import { type SupabaseConfig } from "../../../lib/supabase";
 
 export interface ToolsConfig {
@@ -12,7 +14,9 @@ export interface ToolsConfig {
 
 export function createTools(config: ToolsConfig) {
   return [
-    new DatabaseQueryTool(config.openAIApiKey, config.supabaseConfig, config.userId),
+    new SchemaFilterTool(config.openAIApiKey),
+    new SQLWriterTool(config.openAIApiKey),
+    new SQLExecutorTool(config.supabaseConfig, config.userId)
   ] as const;
 }
 

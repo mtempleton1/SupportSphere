@@ -4,8 +4,17 @@ import { ToolRegistry } from "./tools/registry.js";
 import { Client } from "langsmith";
 import { createTools } from "./tools";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { RunnableSequence, type Runnable } from "@langchain/core/runnables";
+import { RunnableSequence, RunnableLambda, type Runnable } from "@langchain/core/runnables";
 import { BaseMessage, SystemMessage, HumanMessage } from "@langchain/core/messages";
+
+interface MessageState {
+  messages: BaseMessage[];
+}
+
+interface FormattedResponse {
+  messages: any[];
+  context: Record<string, any>;
+}
 
 export class OttoSystem {
   private model: ChatOpenAI;
@@ -46,82 +55,106 @@ export class OttoSystem {
       Always try to use the appropriate tool to get real data rather than making assumptions or stating you don't have access to the information.`
     );
 
-    // Bind tools to the model
+    // Create individual runnables for each step
+    const formatInput = new RunnableLambda({
+      func: async (input: { query: string, context?: Record<string, any> }): Promise<MessageState> => {
+        const previousMessages = (input.context?.previousMessages || []).map(toLangChainMessage);
+        return {
+          messages: [
+            this.systemMessage,
+            ...previousMessages,
+            new HumanMessage(input.query)
+          ]
+        };
+      }
+    }).withConfig({ runName: "input_formatter" });
+
+    const processTools = new RunnableLambda({
+      func: async (input: MessageState, config?: any): Promise<BaseMessage> => {
+        return this.processMessagesWithTools(input.messages, config);
+      }
+    }).withConfig({ runName: "tool_processor" });
+
+    const formatResponse = new RunnableLambda({
+      func: (response: BaseMessage): FormattedResponse => ({
+        messages: [fromLangChainMessage(response)],
+        context: {}
+      })
+    }).withConfig({ runName: "response_formatter" });
+
+    // Create the main chain
+    this.chain = RunnableSequence.from([
+      formatInput,
+      processTools,
+      formatResponse
+    ]).withConfig({
+      runName: "otto_support_chain"
+    });
+  }
+
+  private async processMessagesWithTools(messages: BaseMessage[], config?: any): Promise<BaseMessage> {
     const modelWithTools = this.model.bind({
       functions: this.toolRegistry.getToolDefinitions() as any
     });
 
-    // Create the main chain
-    this.chain = RunnableSequence.from([
-      // First step: Format input into messages array
-      async (input: { query: string, context?: Record<string, any> }) => {
-        const previousMessages = (input.context?.previousMessages || []).map(toLangChainMessage);
-        const messages = [
-          this.systemMessage,
-          ...previousMessages,
-          new HumanMessage(input.query)
-        ];
-        const response = await modelWithTools.invoke(messages);
-        return { response, messages };
-      },
-      // Second step: Handle tool calls if present
-      async ({ response, messages }: { response: any, messages: BaseMessage[] }) => {
-        // Handle tool calls if present
-        const toolCalls = response.additional_kwargs?.tool_calls || [];
-        const functionCall = response.additional_kwargs?.function_call;
-
-        if (toolCalls.length > 0 || functionCall) {
-          // Execute tools and collect results
-          const results = [];
-          
-          if (functionCall) {
-            const result = await this.toolRegistry
-              .getTool(functionCall.name)
-              ?.execute(JSON.parse(functionCall.arguments));
-            if (result) {
-              results.push({
-                tool: functionCall.name,
-                result
-              });
-            }
-          }
-
-          for (const toolCall of toolCalls) {
-            const result = await this.toolRegistry
-              .getTool(toolCall.function.name)
-              ?.execute(JSON.parse(toolCall.function.arguments));
-            if (result) {
-              results.push({
-                tool: toolCall.function.name,
-                result
-              });
-            }
-          }
-
-          // If we executed any tools, get final response
-          if (results.length > 0) {
-            const toolMessages = results.map(r => 
-              new SystemMessage(`Tool ${r.tool} returned: ${r.result}`)
-            );
-
-            const updatedMessages = [...messages, ...toolMessages];
-            const finalResponse = await modelWithTools.invoke(updatedMessages);
-            return finalResponse;
-          }
-        }
-
-        return response;
-      },
-      // Third step: Format the final response
-      (response: any) => ({
-        messages: [
-          fromLangChainMessage(response)
-        ],
-        context: {}
-      })
-    ]).withConfig({
-      runName: "otto_support_chain"
+    // Pass through the parent config to maintain trace hierarchy
+    const response = await modelWithTools.invoke(messages, {
+      ...config,
+      runName: "llm_chat"
     });
+    
+    // Check for tool calls
+    const toolCalls = response.additional_kwargs?.tool_calls || [];
+    const functionCall = response.additional_kwargs?.function_call;
+
+    if (toolCalls.length === 0 && !functionCall) {
+      return response;
+    }
+
+    // Execute tools and collect results
+    const results = [];
+    
+    if (functionCall) {
+      console.log(`Executing tool: ${functionCall.name}`);
+      const result = await this.toolRegistry
+        .getTool(functionCall.name)
+        ?.execute(JSON.parse(functionCall.arguments), {
+          ...config,
+          runName: functionCall.name
+        });
+      if (result) {
+        results.push({
+          tool: functionCall.name,
+          result
+        });
+      }
+    }
+
+    for (const toolCall of toolCalls) {
+      console.log(`Executing tool: ${toolCall.function.name}`);
+      const result = await this.toolRegistry
+        .getTool(toolCall.function.name)
+        ?.execute(JSON.parse(toolCall.function.arguments), {
+          ...config,
+          runName: toolCall.function.name
+        });
+      if (result) {
+        results.push({
+          tool: toolCall.function.name,
+          result
+        });
+      }
+    }
+
+    // Add tool results to messages
+    const toolMessages = results.map(r => 
+      new SystemMessage(`Tool ${r.tool} returned: ${r.result}`)
+    );
+
+    const updatedMessages = [...messages, ...toolMessages];
+    
+    // Recursively process any new tool calls, passing through the config
+    return this.processMessagesWithTools(updatedMessages, config);
   }
 
   private async initializeTracing(config: OttoConfig) {
@@ -170,20 +203,9 @@ export class OttoSystem {
   }
 
   public async query(query: string, context?: Record<string, any>): Promise<OttoResponse> {
-    // try {
-    
     const result = await this.chain.invoke({
       query,
       context
-    }, {
-      callbacks: [{
-        handleToolStart: async (tool: any) => {
-          console.log(`Starting tool: ${tool.name}`);
-        },
-        handleToolEnd: async (output: any) => {
-          console.log(`Tool output: ${output}`);
-        }
-      }]
     });
 
     return {
@@ -198,13 +220,5 @@ export class OttoSystem {
       ],
       context: result.context
     };
-    // } catch (error) {
-    //   console.error('Error in query:', error);
-    //   return {
-    //     messages: [],
-    //     context: {},
-    //     error: error instanceof Error ? error.message : 'An unexpected error occurred'
-    //   };
-    // }
   }
 } 

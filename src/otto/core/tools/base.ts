@@ -22,11 +22,17 @@ export interface ToolDefinition {
   parameters: JsonSchemaDefinition;
 }
 
+export interface RunnableConfig {
+  runName?: string;
+  callbacks?: any[];
+  metadata?: Record<string, any>;
+}
+
 export abstract class BaseTool {
   abstract name: string;
   abstract description: string;
   abstract schema: z.ZodObject<z.ZodRawShape>;
-  abstract execute(args: unknown): Promise<string>;
+  abstract execute(args: unknown, config?: RunnableConfig): Promise<string>;
 
   getDefinition(): ToolDefinition {
     return {
