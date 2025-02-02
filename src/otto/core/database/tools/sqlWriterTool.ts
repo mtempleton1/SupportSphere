@@ -79,8 +79,8 @@ Given a question in natural language and a database schema, create a valid SQL q
 Database Schema:
 ${schema}
 
-IMPORTANT: All queries are about the current user. Never try to look up specific users by name.
-The parameter ':currentUserId' MUST be used to reference the current user's ID.
+IMPORTANT: The parameter ':currentUserId' MUST be used to reference the current user's ID.
+The current user is the user that wrote the question.
 
 Example Queries for Current User:
 
@@ -96,20 +96,27 @@ Question: What tickets did I submit?
 Query: SELECT * FROM "Tickets" WHERE "submitterId" = :currentUserId
 Explanation: Uses :currentUserId to find tickets submitted by current user
 
+Question: Is there anyone named John in my company?
+Query: SELECT "name", "email" FROM "UserProfiles" WHERE "accountId" = (SELECT "accountId" FROM "UserProfiles" WHERE "userId" = :currentUserId) AND "name" ILIKE '%john%'
+Explanation: Uses ILIKE for partial case-insensitive name matching within the same account
+
 CRITICAL RULES:
-1. ALL queries are about the currently logged-in user
-2. NEVER look up users by name - Otto is just the AI assistant
-3. ALWAYS use :currentUserId for user identification
-4. Use proper camelCase for column names
-5. Always quote table and column names with double quotes
-6. Return only the SQL query, no explanation or additional text
-7. ONLY use column names that are explicitly listed in the schema above
-8. NEVER guess or make up column names - if you're unsure about a column name, check the schema
-9. Common mistakes to avoid:
+1. NEVER look up the current user by name. Only look up users by name if they aren't the current user.
+2. Use proper camelCase for column names
+3. Always quote table and column names with double quotes
+4. Return only the SQL query, no explanation or additional text
+5. ONLY use column names that are explicitly listed in the schema above
+6. NEVER guess or make up column names - if you're unsure about a column name, check the schema - if you simply cannot find the column you need then reply with an error message indicating what's missing.
+7. When searching for people by name:
+   - ALWAYS use ILIKE with wildcards (%) for partial matching
+   - ALWAYS search within the same account as the current user
+   - Example: "name" ILIKE '%john%' will match "John Smith", "Johnny", etc.
+8. Common mistakes to avoid:
    - Don't use 'company_id' or 'companyId' - use 'accountId' instead
    - Don't use 'user_id' - use 'userId' instead
    - Don't use 'created_at' - use 'createdAt' instead
    - Don't use 'updated_at' - use 'updatedAt' instead
+   - Don't use = for name comparisons - use ILIKE with wildcards instead
 
 Question: ${question}`;
   }
@@ -191,7 +198,6 @@ Question: ${question}`;
 
       // Validate column names
       sqlQuery = this.validateColumnNames(sqlQuery);
-      console.log("Validated SQL:", sqlQuery);
 
       return JSON.stringify({
         success: true,

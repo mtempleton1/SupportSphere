@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { BaseTool, RunnableConfig } from "../../tools/base";
+import { BaseTool } from "../../tools/base";
 import { createSupabaseClient, type SupabaseConfig } from "../../../../lib/supabase";
 
 export class SQLExecutorTool extends BaseTool {
@@ -27,7 +27,7 @@ export class SQLExecutorTool extends BaseTool {
     return query.replace(/:currentUserId/g, `'${safeUserId}'`);
   }
 
-  async execute(args: z.infer<typeof this.schema>, config?: RunnableConfig): Promise<string> {
+  async execute(args: z.infer<typeof this.schema>): Promise<string> {
     try {
       // Replace parameters in the query
       const finalQuery = await this.replaceQueryParameters(args.sql);
@@ -37,8 +37,6 @@ export class SQLExecutorTool extends BaseTool {
         'execute_raw_query',
         { query: finalQuery }
       );
-      console.log("RESULT")
-      console.log(result)
       if (error) {
         throw error;
       }

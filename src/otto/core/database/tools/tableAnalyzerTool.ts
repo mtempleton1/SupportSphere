@@ -197,7 +197,7 @@ export class TableAnalyzerTool extends BaseTool {
           const description = descLines.join(' ').trim();
           
           // Generate keywords from the table name and description
-          const keywords = this.generateKeywords(name, description);
+          const keywords = this.generateKeywords(name);
           
           this.tableInfo.push({
             name: name.trim(),
@@ -212,7 +212,7 @@ export class TableAnalyzerTool extends BaseTool {
     }
   }
 
-  private generateKeywords(tableName: string, description: string): string[] {
+  private generateKeywords(tableName: string): string[] {
     const keywords = new Set<string>();
     
     // Add table name variations

@@ -1,9 +1,7 @@
 import { ChatOpenAI } from "@langchain/openai";
 import { type OttoConfig, type OttoResponse, toLangChainMessage, fromLangChainMessage } from "./types.js";
 import { ToolRegistry } from "./tools/registry.js";
-import { Client } from "langsmith";
 import { createTools } from "./tools";
-import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { RunnableSequence, RunnableLambda, type Runnable } from "@langchain/core/runnables";
 import { BaseMessage, SystemMessage, HumanMessage } from "@langchain/core/messages";
 
@@ -19,9 +17,7 @@ interface FormattedResponse {
 export class OttoSystem {
   private model: ChatOpenAI;
   private toolRegistry: ToolRegistry;
-  private langsmith?: Client;
   private projectName: string = "otto-support";
-  private tracingEnabled: boolean = false;
   private chain: Runnable;
   private systemMessage: SystemMessage;
 
@@ -115,7 +111,6 @@ export class OttoSystem {
     const results = [];
     
     if (functionCall) {
-      console.log(`Executing tool: ${functionCall.name}`);
       const result = await this.toolRegistry
         .getTool(functionCall.name)
         ?.execute(JSON.parse(functionCall.arguments), {
@@ -131,7 +126,6 @@ export class OttoSystem {
     }
 
     for (const toolCall of toolCalls) {
-      console.log(`Executing tool: ${toolCall.function.name}`);
       const result = await this.toolRegistry
         .getTool(toolCall.function.name)
         ?.execute(JSON.parse(toolCall.function.arguments), {
@@ -191,14 +185,10 @@ export class OttoSystem {
       process.env.LANGCHAIN_PROJECT = this.projectName;
 
       // Initialize the client
-      this.langsmith = new Client();
-      this.tracingEnabled = true;
       console.log('LangSmith tracing initialized successfully for project:', this.projectName);
 
     } catch (error) {
       console.error('Failed to initialize LangSmith tracing:', error);
-      this.tracingEnabled = false;
-      this.langsmith = undefined;
     }
   }
 

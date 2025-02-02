@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { BaseTool, RunnableConfig } from "../../tools/base";
-import { ChatOpenAI } from "@langchain/openai";
+// import { ChatOpenAI } from "@langchain/openai";
 import { SchemaManager } from "../schema/schemaManager";
 import { TableSchema } from "../types/queryTypes";
 import { TableAnalyzerTool } from "./tableAnalyzerTool";
@@ -9,7 +9,6 @@ export class SchemaFilterTool extends BaseTool {
   name = "filterSchema";
   description = "Filter the database schema to only include tables and information relevant to a specific query";
   
-  private llm: ChatOpenAI;
   private schemaManager: SchemaManager;
   private tableAnalyzer: TableAnalyzerTool;
 
@@ -19,11 +18,11 @@ export class SchemaFilterTool extends BaseTool {
 
   constructor(openAIApiKey: string) {
     super();
-    this.llm = new ChatOpenAI({
-      modelName: "gpt-4",
-      temperature: 0,
-      openAIApiKey: openAIApiKey
-    });
+    // this.llm = new ChatOpenAI({
+    //   modelName: "gpt-4",
+    //   temperature: 0,
+    //   openAIApiKey: openAIApiKey
+    // });
     this.schemaManager = SchemaManager.getInstance();
     this.tableAnalyzer = new TableAnalyzerTool(openAIApiKey);
   }

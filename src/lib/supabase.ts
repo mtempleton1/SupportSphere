@@ -27,10 +27,9 @@ export function createSupabaseClient(config: SupabaseConfig, options?: { storage
 
 // Create a default client for backwards compatibility
 const defaultConfig: SupabaseConfig = {
-  projectUrl: import.meta.env.VITE_SUPABASE_PROJECT_URL,
-  anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY
+  projectUrl: import.meta.env?.VITE_SUPABASE_PROJECT_URL,
+  anonKey: import.meta.env?.VITE_SUPABASE_ANON_KEY
 };
-
 if (!defaultConfig.projectUrl || !defaultConfig.anonKey) {
   console.error('Missing required Supabase environment variables:', {
     projectUrl: defaultConfig.projectUrl,
